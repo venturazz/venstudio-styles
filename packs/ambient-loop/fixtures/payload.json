@@ -1,0 +1,25 @@
+{
+  "format": "short",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "engine": "ffmpeg-stills",
+  "transitionSec": 0,
+  "shots": [
+    {
+      "shotRef": "shot-01",
+      "assetId": "asset-shot-01",
+      "seconds": 20,
+      "motion": "zoom-in"
+    }
+  ],
+  "narrationAssetId": "asset-narration",
+  "narrationSec": 20,
+  "durationSec": 20,
+  "captions": [],
+  "targetLufs": -14,
+  "inputs": [
+    "asset-shot-01",
+    "asset-narration"
+  ]
+}

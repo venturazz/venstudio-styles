@@ -1,0 +1,13 @@
+{
+  "format": "short",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "durationSec": 24,
+  "durationToleranceSec": 0.2,
+  "qc": [
+    "G-technical"
+  ],
+  "payloadSha256": "2bd76a9c55aeec07c34503dddbf513b84f37a39a74935237752272bc2e3ed9b0",
+  "sameAs": "venturazz/venstudio fixtures/render/explainer-payload.json"
+}
