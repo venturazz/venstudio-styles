@@ -1,0 +1,3 @@
+# The owner reviews every change; with "Require review from Code Owners" on main, no status can become
+# proven or listed without the owner's approval (CONTRIBUTING.md).
+* @venturazz
