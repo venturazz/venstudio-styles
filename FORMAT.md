@@ -13,6 +13,9 @@ packs/<id>/
   render/                the render project, only for engines that have one
     index.tsx            remotion-2d: exports `composition: PackComposition` ({ id, component })
     index.html           html-capture: the page that defines window.VENSTUDIO (below)
+    *.mjs, *.py, ...     command: the scripts and scenes its render argv runs (below)
+  env/                   only with an `environment`: the lockfiles its npm and pip steps install from
+    package.json, package-lock.json, requirements*.txt
 ```
 
 ## style.json
@@ -26,7 +29,7 @@ packs/<id>/
 | `status` | `draft`, `lab`, `trial`, `proven`, `listed` or `retired` (see CONTRIBUTING.md). |
 | `family` | One of the portal's families (`explainer`, `documentary`, `narrative`, ...). |
 | `formats` | `supported`: `short` and/or `long`. `naturalFrame`: the frame the art direction was measured on (`landscape`, `portrait`, `both`). |
-| `renderer` | `engine` (a key of the portal's ENGINES: `ffmpeg-stills`, `remotion-2d`, `html-capture`, `hermes`, ...), `minWorkerVersion` (the worker that can report this pack: 0.9.0 or later, 0.10.0 or later for html-capture), `composition` (the Remotion composition id; `null` for every other engine), `drawsCaptions` (html-capture only, required there: `true` when the page draws the captions it is given, `false` when the worker burns them with the job's caption style). |
+| `renderer` | `engine` (a key of the portal's ENGINES: `ffmpeg-stills`, `remotion-2d`, `html-capture`, `hermes`, `command`, ...), `minWorkerVersion` (the worker that can report this pack: 0.9.0 or later, 0.10.0 or later for html-capture), `composition` (the Remotion composition id; `null` for every other engine), `drawsCaptions` (html-capture only, required there: `true` when the page draws the captions it is given, `false` when the worker burns them with the job's caption style). |
 | `contract.pacing` | `shotSeconds` [min, max], `hookWithinMs` (first cut of a short), `cutsPerMinute` [min, max], `transitionSec` (cross-fade). |
 | `contract.onScreen` | `elements` allowed on screen (plate, heading, callout, counter, bar, gauge, arrow, tally, particles, diagram), `motionTokens` the renderer interprets, `elementAnimation` (false: only the camera moves). |
 | `contract.captions` | `required`, `spec` (`caption-spec-v1`: geometry derived by the portal's caption-spec.ts), `safeAreaPct`. |
@@ -38,6 +41,7 @@ packs/<id>/
 | `curation` | The record: `{ date, kind, ref, result, notes }`, kind one of `ci-render`, `trial-run`, `qc`, `hermes-review`, `owner-review`, `research-source`; result one of `pass`, `fail`, `approved`, `rejected`, `note`. |
 | `hermes` | Engine `hermes` only, optional: the Hermes skill the portal names in the render request. `skill` (as invoked, `/graph`), `aliases` (other names of the same skill), `mode` (`spec`: a quick skill from a small JSON spec; `project`: a full project with its own voice and caption timing), `voice` (`run`, the default: the run's voice stage records the narration the skill uses; `skill`: the skill makes its own voice, `project` mode only, and the run has no voice stage), `input` (how the run's skill brief, narration and captions map to the skill's input; a `project` skill must say how the run's narration is used), `output` (what Hermes hands back), `variantOf` (packs in this repo this is the Hermes research variant of). |
 | `workflow` | Optional: the workflow a run of this pack goes through (below). `recipe` (one of the recipes below) and `review` (stages of this pack's list where the owner always reviews, whatever the autonomy level). Without it the recipe is inferred. |
+| `environment` | Optional; required for engine `command`; refused on `hermes` and `html-design` packs. The exact tools the pack renders with, as a declarative recipe a worker (0.12.0+) installs by itself. See "Environments" below. |
 | `design` | `html-design` packs only, and required there: the brief Hermes designs each page from. `brief` (what the page is for and how it moves), `palette` (2 to 12 colours, `#RRGGBB`), `typography` (the pack's vendored fonts or the run's font), `layout` (safe areas and layout rules). |
 
 Rules the validator applies beyond the shape:
@@ -49,8 +53,12 @@ Rules the validator applies beyond the shape:
   other engine: a pack VenStudio renders itself still needs a real `ci-render` to leave `draft`.
 - `proven` and `listed` need an `owner-review` entry with result `approved` and `trial-run` entries with result
   `pass` (copied from the portal's Styles page).
-- An engine VenStudio does not run yet (anything but `ffmpeg-stills`, `remotion-2d`, `html-capture` and `hermes`)
-  keeps the pack at `draft` (or `retired`).
+- An engine VenStudio does not run yet (anything but `ffmpeg-stills`, `remotion-2d`, `html-capture`, `hermes` and
+  `command`) keeps the pack at `draft` (or `retired`). A look that needs other tools (three.js, Godot, Manim, Blender,
+  Python libraries) is not waiting for a new engine: Hermes hands it over as an engine `command` pack with the
+  environment it used (docs/hermes-handover.md).
+- Engine `command` needs an `environment` with a `render` block, `minWorkerVersion` 0.12.0 or later, and `render/`
+  holding the text files its argv runs. Any pack with an `environment` needs `minWorkerVersion` 0.12.0 or later.
 - `hermes` is research only (owner decision): such a pack is at most `trial`, never `proven` or `listed`. It has no
   render project and no `ci-render` entry (there is no Hermes in CI).
 - `workflow.recipe` `html-design` is research only too (owner decision: Hermes writes the page, the one place
@@ -59,7 +67,11 @@ Rules the validator applies beyond the shape:
   it is built from) or a real `ci-render` with result `pass`. No GSAP under `render/vendor/` until the owner approves
   its licence.
 - `hermes` (the block) is only for engine `hermes`; `variantOf` must name packs in this repo.
-- `render/` exists exactly when the engine has a render project (`remotion-2d`, `html-capture`).
+- `render/` exists exactly when the engine has a render project (`remotion-2d`, `html-capture`, `command`).
+  - command: text files only (scripts and scenes: `.mjs`, `.js`, `.py`, `.json`, `.gd`, `.tscn`, `.svg`, ..., `LICENSE`,
+    `NOTICE`); binaries come from the environment's downloads, never from the pack.
+- `env/` exists only with an `environment` and holds only `package.json`, `package-lock.json`, `requirements*.txt`,
+  licences and a README (one level of subfolder allowed).
   - remotion-2d: source only (`.ts`, `.tsx`, `.json`, `.css`, `.svg`); `render/index.tsx` exports the composition
     named in `renderer.composition`.
   - html-capture: text files only (`.html`, `.js`, `.mjs`, `.css`, `.json`, `.svg`, `.txt`, `.md`, `LICENSE`,
@@ -174,7 +186,93 @@ the skill uses the run's narration and captions; with `"skill"` it records its o
 and names the voice backend in its reply; the result is a reel the studio QCs. The reply is checked exactly as without a skill (a `/clip/` URL on the media host, downloaded, sniffed, then
 qc-video), and the video's provenance records the backend, the plugin and the skill.
 
+## Environments (worker 0.12.0+)
+
+An `environment` names the exact tools a pack renders with, so a worker can install them by itself and nothing is
+pre-built by guess. It is declarative: there is no shell, script or sudo step anywhere, so a merged pack cannot run an
+arbitrary command on a worker. The worker installs it into `<home>/envs/<id>@<version>/` (default home
+`/home/hatch/venstudio`) between jobs, as its own non-root user, and reports `env:<id>@<version>` and the pack's
+`pack:<id>@<version>` only after the probe passed there. This repo's CI does the same install, probe and fixture render
+on a clean runner with the vendored worker (job `environments`), so a recipe that does not work cannot merge.
+
+```json
+"environment": {
+  "id": "three-svg", "version": "1.0.0",
+  "platforms": ["linux-x64"],
+  "hosts": ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com", "registry.npmjs.org"],
+  "requires": [{ "tool": "node", "min": "22.18" }, { "tool": "npm", "min": "10.0" }, { "tool": "ffmpeg" }, { "tool": "glibc", "min": "2.29" }],
+  "steps": [
+    { "download": { "url": "https://github.com/.../resvg-linux-x86_64.tar.gz", "sha256": "<64 hex>", "bytes": 1476401, "extract": "tar.gz", "stripComponents": 0, "to": "bin" } },
+    { "npm": { "lockfile": "env/package-lock.json", "to": "node" } },
+    { "env": { "PATH": "bin" } }
+  ],
+  "probe": { "argv": ["node", "{packDir}/render/probe.mjs", "--env", "{envDir}", "--work", "{workDir}"], "timeoutSec": 60, "exitCode": 0, "stdout": "^ok " },
+  "render": { "argv": ["node", "{packDir}/render/render.mjs", "--props", "{props}", "--out", "{out}", "--env", "{envDir}", "--in", "{inDir}"],
+              "secondsPerVideoSecond": 30, "output": "png-frames", "captions": "worker", "audio": "worker" },
+  "licences": [{ "tool": "three", "version": "0.183.2", "licence": "MIT", "source": "https://github.com/mrdoob/three.js/tree/r183" }]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `id`, `version` | The environment's name and semver. Bump `version` whenever a step changes; workers keep each version in its own folder and remove an old one after a newer one passed its probe and no installed pack uses it. |
+| `platforms` | `linux-x64` (Muse and CI; required) and optionally `linux-arm64`. A worker on another platform reports the environment as failed, with that reason. |
+| `hosts` | Every host the install reaches, exactly (no wildcards): each download URL, each redirect hop of it, and each npm tarball. A pip step needs `pypi.org` and `files.pythonhosted.org`. |
+| `requires` | What the machine must already have, checked before anything is downloaded, never installed: `node`, `npm`, `python3`, `ffmpeg`, `glibc` (each with an optional `min` version) and `lib` (a shared library by soname, e.g. `{ "tool": "lib", "name": "libcairo.so.2" }`). A missing one fails the install with its name. |
+| `steps` | Up to 16, each exactly one of the four below, run in order. |
+| `steps[].download` | `url` (https, default port, no credentials, host in `hosts`), `sha256` (required, lowercase hex of the exact file), `bytes` (the exact size; at most 512 MB each, 1 GB together), `extract` (`tar.gz`, `tar.xz`, `zip` or `none`), `stripComponents` (archives, 0..8), `to` (a relative path inside the environment: a folder for an archive, the file for `none`), `executable` (`none` only), `platform` (only on that platform). |
+| `steps[].npm` | `lockfile` (`env/[<dir>/]package-lock.json` in the pack, `package.json` beside it), `to` (a folder inside the environment), `allowScripts` (up to 8 package names whose install scripts truly must run; empty by default). The worker copies both files to `to` and runs `npm ci --omit=dev --ignore-scripts` with an empty npmrc; then `npm rebuild <allowScripts>` if any. The lockfile must be v2 or v3, every package an https tarball on a listed host with an sha512 `integrity` (npm refuses a tarball that does not match it), and package.json must have no install or prepare scripts. |
+| `steps[].pip` | `requirements` (`env/[<dir>/]requirements*.txt`, every line `name==version --hash=sha256:<hex>`, no options), `python` (the lowest python3 it needs), `to` (the venv folder). The worker runs `python3 -m venv <to>`, then `pip install --require-hashes --only-binary=:all: --no-deps` from PyPI only: wheels, no sdist builds, so no setup.py runs. One pip step per environment. |
+| `steps[].env` | `PATH`, `LD_LIBRARY_PATH`, `PYTHONPATH` and/or `NODE_PATH`: one or a list of folders inside the environment, put in front. Nothing else (no `LD_PRELOAD`, `NODE_OPTIONS`, ...). A pip step's `<to>/bin` is on `PATH` already. |
+| `probe` | A fixed `argv` (placeholders `{packDir}`, `{envDir}`, `{workDir}` only), `timeoutSec` (1..300), `exitCode` and an optional `stdout` regular expression its output must match. It runs after the install and again once per worker process; the capabilities are reported only while it passes. |
+| `render` | Engine `command` only, and required there. `argv` (placeholders below), `secondsPerVideoSecond` (the render's time limit per second of video, at least one minute in all), `output` (`png-frames`: `{out}` is a folder the render fills with `000000.png`, `000001.png`, ... at the job's size, exactly `{frames}` of them; `mp4-muted`: `{out}` is the mp4 file to write), `captions` (`worker`: the worker burns the job's captions afterwards; `renderer`: the render draws `props.captions`), `audio` (always `worker`: the narration and the audio mix are the worker's shared steps). |
+| `licences` | Every tool the recipe installs: `tool`, `version`, `licence`, `source` (https), `notes` (where the hash came from). They go into the video's provenance with the pack's. |
+
+**argv.** An argv is an array, never a shell string, and each element is passed as one argument. `argv[0]` is `node`
+(the worker's own node), `python` (the environment's venv python; needs a pip step), `ffmpeg` (the worker's) or
+`{envDir}/<path>` (a downloaded binary). Shells, `env`, `sudo`, `su`, `doas`, `pkexec`, `unshare` and the like are refused
+anywhere in an argv, and inline code (`node -e`, `python -c`) is refused: code lives in files of the pack. Placeholders
+come from a closed set: `{props}` (a JSON file: the html-capture props plus `kind: "command"` and each scene's `start`,
+`startFrame` and `frames`; `shots[].image` is the picture's file name in `{inDir}`, `font` likewise), `{out}`,
+`{width}`, `{height}`, `{fps}`, `{frames}`, `{packDir}` (the installed pack), `{envDir}`, `{inDir}` (the job's inputs)
+and `{workDir}` (the render's own scratch folder, also its cwd).
+
+**What a worker enforces, and what it trusts.**
+
+- Enforced: the recipe's shape (the worker parses it again with its own reader and refuses what this validator
+  refuses); https and the host list on every hop; sha256 and size on every download (a cached file is hashed again);
+  archives checked before anything is written (no absolute path, no `..`, no hard links, devices or fifos, no symlink
+  pointing outside the environment, nothing written through a symlink, setuid and group/other write bits dropped,
+  at most 1 GB and 100,000 entries); npm with `--ignore-scripts` and the lockfile's integrity; pip with
+  `--require-hashes` and wheels only; never as root; a disk check before the install (three times the downloads plus
+  room for npm or pip, 1 GB kept free, `VENSTUDIO_ENV_BUDGET_GB` caps all environments, default 10); the probe before
+  any capability; the render's minimal environment (no worker token, no portal URL, `HOME` and `TMPDIR` in its scratch
+  folder), its time limit, its own process group (a timeout stops everything it started) and a bounded log (64 KB,
+  kept as `command.log` in the job folder); the frame count and size of `png-frames`.
+- Network during the render: where the machine allows it without privileges, the render runs inside a new user and
+  network namespace (`unshare --user --map-current-user --net`, or `--map-root-user`: root only inside a namespace with
+  no network and no privileges outside), so it has no network at all. Where that is not available, every proxy
+  variable points at a loopback listener that refuses and records each request, and any recorded request fails the
+  job by name; a tool that ignores proxy variables and connects directly is then not stopped by the worker (on Muse
+  the VM's only way out is its egress proxy). The job result says which applied (`network`).
+- Trusted: the code of the pack and of the tools the recipe installs. Review, this repo's CI and the owner's merge are
+  the gate for that code; the worker does not sandbox it beyond the above.
+
+## Engine command
+
+A `command` pack renders with its own fixed `environment.render.argv`, run by the worker (0.12.0+) in the job's
+folder with the tools its environment installed. Afterwards the shared steps run as for every renderer: the frames are
+encoded (H.264, yuv420p), the job's captions are burned unless the render drew them, the narration and the audio mix
+are added, the video is probed and uploaded. Its fixture is a render-video payload with `engine: "command"` and a scene
+plan whose `template` is the pack id. CI renders it with
+`runtime/html-capture/venstudio-worker.ts render-command` and `tools/check-video.mjs` checks it like any fixture.
+
 ## Versioning the format
 
 A change that an older validator would misread raises `format`. The portal and the worker read only formats they
 know and refuse the rest by name.
+
+Adding `environment` and engine `command` did not raise `format`: an older validator refuses the `environment` field
+by name, an older portal does not know engine `command` and leaves such a pack out, and a worker before 0.12.0 never
+reports it (it has no command renderer, and the portal only lists env-packs.json in the signed manifest of a worker that
+asks for it).

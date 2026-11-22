@@ -1,0 +1,229 @@
+{
+  "format": 1,
+  "id": "three-low-poly",
+  "name": "Low-poly 3D shapes (three.js, command)",
+  "description": "A flat-shaded low-poly shape turns over a dimmed plate, one per scene: it pops in, drifts or the camera pushes closer. three.js projects it on the CPU and resvg rasterises each frame.",
+  "version": "0.1.0",
+  "status": "draft",
+  "family": "animation-3d",
+  "formats": {
+    "supported": [
+      "short"
+    ],
+    "naturalFrame": "portrait"
+  },
+  "renderer": {
+    "engine": "command",
+    "minWorkerVersion": "0.12.0",
+    "composition": null
+  },
+  "contract": {
+    "pacing": {
+      "shotSeconds": [
+        3,
+        6
+      ],
+      "hookWithinMs": 4000,
+      "cutsPerMinute": [
+        10,
+        20
+      ],
+      "transitionSec": 0
+    },
+    "onScreen": {
+      "elements": [
+        "plate",
+        "heading"
+      ],
+      "motionTokens": [
+        "pop",
+        "drift",
+        "push"
+      ],
+      "elementAnimation": true
+    },
+    "captions": {
+      "required": true,
+      "spec": "caption-spec-v1",
+      "safeAreaPct": 8
+    },
+    "audio": {
+      "narrated": true,
+      "targetLufs": -14,
+      "maxTruePeakDb": -1,
+      "musicPolicy": "none"
+    },
+    "assets": {
+      "model": "plates-and-diagrams",
+      "kinds": [
+        "image"
+      ],
+      "allowedSources": [
+        "upload",
+        "hermes",
+        "worker",
+        "generated"
+      ],
+      "forbidKinds": [
+        "reference-video"
+      ]
+    }
+  },
+  "portal": {
+    "beatShape": "single",
+    "qc": {
+      "minPresentationScore": 75,
+      "gates": [
+        "G-technical",
+        "G-presentation"
+      ]
+    },
+    "themes": [
+      "education",
+      "science",
+      "technology"
+    ],
+    "keywords": [
+      "low poly",
+      "3d shape",
+      "three.js",
+      "geometric",
+      "abstract explainer"
+    ],
+    "cautions": [
+      "The shape is abstract: it illustrates the narration's idea, it never stands for a real object or a real number.",
+      "The plate is dimmed behind the shape; keep it a texture, not a picture the viewer must read."
+    ],
+    "sources": [
+      "https://github.com/mrdoob/three.js/tree/r183/examples/jsm/renderers"
+    ]
+  },
+  "fixture": {
+    "payload": "fixtures/payload.json",
+    "expect": "fixtures/expect.json"
+  },
+  "provenance": [
+    {
+      "type": "repo",
+      "ref": "https://github.com/mrdoob/three.js@r183 (ea4846f2b8feaada5dcce23b61444be361dbbfed; npm three 0.183.2): build/three.module.js and examples/jsm/renderers/Projector.js, used as installed by the environment",
+      "licence": "MIT, Copyright (c) 2010-2026 three.js authors (node_modules/three/LICENSE, installed by the recipe)",
+      "notes": "Used as a library, not copied: render/scene.mjs builds a scene with three's polyhedron geometries, a camera and three's Projector (the CPU projection SVGRenderer uses), then writes its own SVG with flat Lambert shading. Nothing of three.js is vendored in the pack."
+    },
+    {
+      "type": "repo",
+      "ref": "https://github.com/linebender/resvg/releases/tag/v0.44.0 (ebb3984ef00afd9dc0b493a38f5b163baa41c4d5): resvg-linux-x86_64.tar.gz",
+      "licence": "MPL-2.0 (LICENSE.txt in the resvg repository at v0.44.0)",
+      "notes": "The unmodified release binary, downloaded by the recipe and pinned by sha256; it only rasterises the frames' SVG to PNG."
+    },
+    {
+      "type": "owner-note",
+      "ref": "venturazz/venstudio docs/plans/style-system.md and this repo's docs/hermes-handover.md (owner decision: learning flows Hermes -> styles repo -> Muse; no tools pre-built by guess)",
+      "licence": "owner",
+      "notes": "The first pack through the handover channel, chosen small and CPU-only to prove the channel: an npm step, a pinned download, a probe and the command renderer. Written by Kiro in Hermes's place for this proof; a real handover carries what Hermes actually used."
+    }
+  ],
+  "curation": [],
+  "workflow": {
+    "recipe": "image-sequence"
+  },
+  "environment": {
+    "id": "three-svg",
+    "version": "1.0.0",
+    "platforms": [
+      "linux-x64"
+    ],
+    "hosts": [
+      "github.com",
+      "objects.githubusercontent.com",
+      "release-assets.githubusercontent.com",
+      "registry.npmjs.org"
+    ],
+    "requires": [
+      {
+        "tool": "node",
+        "min": "22.18"
+      },
+      {
+        "tool": "npm",
+        "min": "10.0"
+      },
+      {
+        "tool": "ffmpeg"
+      },
+      {
+        "tool": "glibc",
+        "min": "2.29"
+      }
+    ],
+    "steps": [
+      {
+        "download": {
+          "url": "https://github.com/linebender/resvg/releases/download/v0.44.0/resvg-linux-x86_64.tar.gz",
+          "sha256": "450cfeaf8122f7389a8acf698888804e1ed46980b611d5253204049c51c87087",
+          "bytes": 1476401,
+          "extract": "tar.gz",
+          "stripComponents": 0,
+          "to": "bin"
+        }
+      },
+      {
+        "npm": {
+          "lockfile": "env/package-lock.json",
+          "to": "node"
+        }
+      },
+      {
+        "env": {
+          "PATH": "bin"
+        }
+      }
+    ],
+    "probe": {
+      "argv": [
+        "node",
+        "{packDir}/render/probe.mjs",
+        "--env",
+        "{envDir}",
+        "--work",
+        "{workDir}"
+      ],
+      "timeoutSec": 60,
+      "exitCode": 0,
+      "stdout": "^ok three r183 resvg 0\\.44\\.0"
+    },
+    "render": {
+      "argv": [
+        "node",
+        "{packDir}/render/render.mjs",
+        "--props",
+        "{props}",
+        "--out",
+        "{out}",
+        "--env",
+        "{envDir}",
+        "--in",
+        "{inDir}"
+      ],
+      "secondsPerVideoSecond": 30,
+      "output": "png-frames",
+      "captions": "worker",
+      "audio": "worker"
+    },
+    "licences": [
+      {
+        "tool": "three",
+        "version": "0.183.2",
+        "licence": "MIT",
+        "source": "https://github.com/mrdoob/three.js/tree/r183",
+        "notes": "npm tarball pinned by the lockfile's sha512 integrity, taken from google/model-viewer package-lock.json at 5cc277a497f6e13fc75ff4821da73164a12570c9 (npm ci refuses a tarball that does not match)."
+      },
+      {
+        "tool": "resvg",
+        "version": "0.44.0",
+        "licence": "MPL-2.0",
+        "source": "https://github.com/linebender/resvg/releases/tag/v0.44.0",
+        "notes": "sha256 and size computed from the release asset downloaded through the authenticated GitHub API (asset 195490105); the release predates GitHub's published asset digests. Needs glibc 2.29 or later."
+      }
+    ]
+  }
+}

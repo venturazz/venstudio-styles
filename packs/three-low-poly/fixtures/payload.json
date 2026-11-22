@@ -1,0 +1,159 @@
+{
+  "format": "short",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "engine": "command",
+  "transitionSec": 0,
+  "shots": [
+    {
+      "shotRef": "shot-01",
+      "assetId": "asset-shot-01",
+      "seconds": 4,
+      "motion": "none"
+    },
+    {
+      "shotRef": "shot-02",
+      "assetId": "asset-shot-02",
+      "seconds": 4,
+      "motion": "none"
+    },
+    {
+      "shotRef": "shot-03",
+      "assetId": "asset-shot-03",
+      "seconds": 4,
+      "motion": "none"
+    }
+  ],
+  "narrationAssetId": "asset-narration",
+  "narrationSec": 12,
+  "durationSec": 12,
+  "targetLufs": -14,
+  "fontAssetId": "asset-font",
+  "inputs": [
+    "asset-shot-01",
+    "asset-shot-02",
+    "asset-shot-03",
+    "asset-narration",
+    "asset-font"
+  ],
+  "captions": [
+    {
+      "start": 0,
+      "end": 4,
+      "text": "Every idea starts as a simple shape."
+    },
+    {
+      "start": 4,
+      "end": 8,
+      "text": "Move closer and the facets show."
+    },
+    {
+      "start": 8,
+      "end": 12,
+      "text": "Keep turning it until it makes sense."
+    }
+  ],
+  "captionStyle": {
+    "fontAssetId": "asset-font",
+    "fontSizePx": 78,
+    "minFontSizePx": 64,
+    "maxFontSizePx": 78,
+    "lineSpacingPx": 26,
+    "outlinePx": 7,
+    "shadowPx": 5,
+    "marginXPx": 51,
+    "marginBottomPx": 154,
+    "maxWidthPx": 978,
+    "narrowFace": false,
+    "safeAreaPct": 8
+  },
+  "scenePlan": {
+    "version": 1,
+    "engine": "command",
+    "template": "three-low-poly",
+    "family": "animation-3d",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "transitionSec": 0,
+    "scenes": [
+      {
+        "shotRef": "shot-01",
+        "seconds": 4,
+        "beatRole": "hook",
+        "elements": [
+          {
+            "kind": "plate"
+          },
+          {
+            "kind": "heading",
+            "text": "A shape for every idea"
+          }
+        ],
+        "tokens": [
+          "pop",
+          "drift"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 120,
+            "fps": 30
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-02",
+        "seconds": 4,
+        "beatRole": "body",
+        "elements": [
+          {
+            "kind": "plate"
+          },
+          {
+            "kind": "heading",
+            "text": "Closer to the detail"
+          }
+        ],
+        "tokens": [
+          "push"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 120,
+            "fps": 30
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-03",
+        "seconds": 4,
+        "beatRole": "outro",
+        "elements": [
+          {
+            "kind": "plate"
+          },
+          {
+            "kind": "heading",
+            "text": "Keep it turning"
+          }
+        ],
+        "tokens": [
+          "drift"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 120,
+            "fps": 30
+          }
+        ]
+      }
+    ]
+  }
+}
