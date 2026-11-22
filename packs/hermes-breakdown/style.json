@@ -3,7 +3,7 @@
   "id": "hermes-breakdown",
   "name": "Exploded view (Hermes /breakdown)",
   "description": "A 3D phone floats on a dark studio backdrop and comes apart layer by layer, each part with a leader line and a label. Hermes renders it with /breakdown.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "status": "trial",
   "family": "animation-3d",
   "formats": {
@@ -134,7 +134,11 @@
   "hermes": {
     "skill": "/breakdown",
     "mode": "spec",
-    "input": "One clip per storyboard shot, in shot order. For each shot, write the skill's JSON spec from the shot's onScreenText (else its description) and the run's topic, following the skill's spec and taste rules (title, subtitle, exactly 6 labels top layer first as [name, short note], time, date, accent); never invent data the storyboard does not give. Render each spec with the skill, fit each clip to the shot's seconds (hold the last frame when the shot is longer, play it faster when shorter), cut them together, add the run's narration as the audio and burn the run's captions in the caption band. The shot pictures are not needed by this skill; ignore them.",
+    "voice": "run",
+    "input": "The run's skill brief gives one shot per clip, in order, each with its seconds and the skill's JSON spec (brief.shots[i].spec), written by Hermes from the approved script and the research notes following the skill's spec and taste rules (title, subtitle, exactly 6 labels top layer first as [name, short note], time, date, accent); never invent data the script and notes do not give. Render each spec with the skill, fit each clip to the shot's seconds (hold the last frame when the shot is longer, play it faster when shorter), cut them together, add the run's narration as the audio and burn the run's captions in the caption band. No pictures are made for this workflow.",
     "output": "One 1080x1920 H.264 MP4 at 30 fps with the narration, published under /clip/ on the media host. The studio then runs qc-video and the owner scores it on Review."
+  },
+  "workflow": {
+    "recipe": "hermes-skill"
   }
 }

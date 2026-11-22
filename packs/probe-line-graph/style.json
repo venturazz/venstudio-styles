@@ -3,7 +3,7 @@
   "id": "probe-line-graph",
   "name": "Probe: line graph (html-capture)",
   "description": "A short animated line graph with a heading and a counter, drawn in HTML and SVG. Lab pack that proves the html-capture renderer.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "status": "lab",
   "family": "motion-graphics",
   "formats": {
@@ -120,5 +120,11 @@
       "result": "pass",
       "notes": "1080x1920, 30 fps, 6 s (180 frames), H.264 yuv420p; captions burned by ffmpeg with captionStyle. The same render runs in venstudio CI (apps/worker/html-capture-render.test.ts) through the real render-video path with the narration and qc-video."
     }
-  ]
+  ],
+  "workflow": {
+    "recipe": "scene-spec",
+    "review": [
+      "scene-spec"
+    ]
+  }
 }

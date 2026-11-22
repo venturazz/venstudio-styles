@@ -62,6 +62,81 @@ export const CURATION_KINDS = ["ci-render", "trial-run", "qc", "hermes-review", 
 /** How a Hermes skill is driven: a quick skill from a small JSON spec, or a full project with its own voice and timing. */
 export const HERMES_MODES = ["spec", "project"];
 export const CURATION_RESULTS = ["pass", "fail", "approved", "rejected", "note"];
+/** Who voices a hermes-skill run: the run's own voice stage ("run"), or the skill with its own voice tools ("skill"). */
+export const HERMES_VOICES = ["run", "skill"];
+
+/**
+ * Workflows (style.json `workflow`). A recipe is the ordered list of stage kinds a run of the pack goes through; the
+ * venstudio run engine fixes a run's list when the run starts (apps/portal/lib/studio/recipes.ts mirrors this table and
+ * a venstudio test checks they agree). Stage kinds are reusable steps the engine knows; a recipe made only of known
+ * kinds needs no engine change. Recipes marked implemented: false are reserved names: the validator refuses them, so a
+ * pack cannot ask for a workflow the studio does not run.
+ */
+export const STAGE_KINDS = ["idea", "research", "script", "storyboard", "scene-spec", "skill-brief", "assets", "voice", "render", "qc"];
+/** Stage kinds reserved for recipes that are not built yet. No pack may name them. */
+export const RESERVED_STAGE_KINDS = ["page-design", "frame-preview", "project-build", "clips"];
+export const RECIPES = {
+  "image-sequence": {
+    implemented: true,
+    stages: ["idea", "research", "script", "storyboard", "assets", "voice", "render", "qc"],
+    optional: [],
+    summary: "A storyboard with an image prompt per shot, one picture per shot, then voice, render and quality check (the original pipeline).",
+  },
+  "scene-spec": {
+    implemented: true,
+    stages: ["idea", "research", "script", "scene-spec", "voice", "render", "qc"],
+    optional: [],
+    summary: "Data-driven: Hermes writes a scene spec (seconds, beat, on-screen elements with sourced numbers, motion tokens, captions) that the page renders directly. No pictures are generated.",
+  },
+  "hermes-skill": {
+    implemented: true,
+    stages: ["idea", "research", "script", "skill-brief", "voice", "render", "qc"],
+    optional: ["voice"],
+    summary: "Research only: Hermes turns the approved script into the input the pack's skill expects, then renders with that skill. No pictures are generated; the voice stage is left out when the skill makes its own voice (hermes.voice skill).",
+  },
+  "html-design": {
+    implemented: false,
+    stages: ["idea", "research", "script", "page-design", "voice", "frame-preview", "render", "qc"],
+    optional: [],
+    summary: "Reserved, not built: Hermes would write the page for each video (research only), with a frame preview gate. Needs the owner's explicit approval before it is built.",
+  },
+  "engine-project": {
+    implemented: false,
+    stages: ["idea", "research", "script", "project-build", "voice", "render", "qc"],
+    optional: [],
+    summary: "Reserved, not built: a render project for a scene engine (Godot, Manim, Blender) built per video.",
+  },
+  "clip-sequence": {
+    implemented: false,
+    stages: ["idea", "research", "script", "storyboard", "clips", "voice", "render", "qc"],
+    optional: [],
+    summary: "Reserved, not built: a video clip per shot instead of a picture.",
+  },
+};
+export const RECIPE_IDS = Object.keys(RECIPES);
+export const IMPLEMENTED_RECIPES = RECIPE_IDS.filter((r) => RECIPES[r].implemented);
+
+/**
+ * The recipe of a pack: its `workflow.recipe`, or the one its engine and asset model imply when it has none (engine
+ * hermes: hermes-skill; html-capture with plates and diagrams: scene-spec; anything else, remotion-2d included,
+ * image-sequence). The portal infers the same way.
+ */
+export function recipeOf(style) {
+  if (isRecord(style?.workflow) && typeof style.workflow.recipe === "string") return style.workflow.recipe;
+  const engine = isRecord(style?.renderer) ? style.renderer.engine : undefined;
+  const model = isRecord(style?.contract?.assets) ? style.contract.assets.model : undefined;
+  if (RESEARCH_ENGINES.includes(engine)) return "hermes-skill";
+  if (engine === "html-capture" && model !== "image-per-shot") return "scene-spec";
+  return "image-sequence";
+}
+
+/** The stage list a run of this pack goes through: the recipe's, without the voice stage when a skill voices itself. */
+export function workflowStages(style) {
+  const recipe = RECIPES[recipeOf(style)];
+  if (!recipe) return [];
+  const skillVoice = recipeOf(style) === "hermes-skill" && isRecord(style?.hermes) && style.hermes.voice === "skill";
+  return recipe.stages.filter((k) => !(skillVoice && k === "voice"));
+}
 
 export const LIMITS = { packFiles: 200, fileBytes: 1024 * 1024, packBytes: 5 * 1024 * 1024, text: 2000, list: 64 };
 
@@ -73,8 +148,11 @@ const PATH_RE = /^[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$/;
 /** A Hermes skill as it is invoked, e.g. "/graph". */
 const SKILL_RE = /^\/[a-z0-9][a-z0-9-]{0,62}$/;
 
-const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "family", "formats", "renderer", "contract", "portal", "fixture", "provenance", "curation", "hermes"];
-const HERMES_KEYS = ["skill", "aliases", "mode", "input", "output", "variantOf"];
+const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "family", "formats", "renderer", "contract", "portal", "fixture", "provenance", "curation", "hermes", "workflow"];
+/** Top-level fields a pack may leave out. */
+export const OPTIONAL_TOP_KEYS = ["hermes", "workflow"];
+const HERMES_KEYS = ["skill", "aliases", "mode", "voice", "input", "output", "variantOf"];
+const WORKFLOW_KEYS = ["recipe", "review"];
 
 const isRecord = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const isText = (v, max = LIMITS.text) => typeof v === "string" && v.trim().length > 0 && v.length <= max;
@@ -282,6 +360,8 @@ export function validateStyle(style, { dirName } = {}) {
     for (const m of validateHermesBlock(style.hermes)) issues.push(m);
   }
 
+  if (style.workflow !== undefined) for (const m of validateWorkflow(style)) issues.push(m);
+
   if (!Array.isArray(style.provenance) || style.provenance.length === 0) issues.push("provenance must list at least one source the look was learned from");
   else {
     style.provenance.forEach((s, i) => {
@@ -324,6 +404,49 @@ export function validateStyle(style, { dirName } = {}) {
   return issues;
 }
 
+/**
+ * Validates style.json `workflow`: a recipe VenStudio runs, compatible with the pack's engine and asset model, and
+ * `review` (stages where the owner always reviews, whatever the autonomy level) naming stages of the pack's own list.
+ */
+export function validateWorkflow(style) {
+  const issues = [];
+  const w = style?.workflow;
+  if (!isRecord(w)) return ['workflow must be an object naming a recipe, e.g. { "recipe": "image-sequence" }'];
+  checkKeys(w, WORKFLOW_KEYS, "workflow", issues);
+  const recipe = RECIPES[w.recipe];
+  if (!recipe) return [...issues, `workflow.recipe must be one of ${RECIPE_IDS.join(", ")}`];
+  if (!recipe.implemented) issues.push(`workflow.recipe ${w.recipe} is a reserved name: it is not built yet, so no pack can use it (${recipe.summary})`);
+  const engine = isRecord(style.renderer) ? style.renderer.engine : undefined;
+  const model = isRecord(style.contract?.assets) ? style.contract.assets.model : undefined;
+  const animates = isRecord(style.contract?.onScreen) && style.contract.onScreen.elementAnimation === true;
+  if (w.recipe === "image-sequence" && !["image-per-shot", "plates-and-diagrams"].includes(model)) {
+    issues.push("workflow.recipe image-sequence needs contract.assets.model image-per-shot or plates-and-diagrams (it makes a picture per shot)");
+  }
+  if (w.recipe === "scene-spec" && !(engine === "html-capture" || (engine === "remotion-2d" && animates))) {
+    issues.push(`workflow.recipe scene-spec needs engine html-capture, or remotion-2d with contract.onScreen.elementAnimation true (the page draws the spec); this pack renders with ${String(engine)}${engine === "remotion-2d" ? " without element animation" : ""}`);
+  }
+  if (w.recipe === "hermes-skill" && !RESEARCH_ENGINES.includes(engine)) {
+    issues.push(`workflow.recipe hermes-skill needs engine ${RESEARCH_ENGINES.join(" or ")} (Hermes renders with the skill); this pack renders with ${String(engine)}`);
+  }
+  if (w.recipe !== "hermes-skill" && isRecord(style.hermes) && style.hermes.voice === "skill") {
+    issues.push("hermes.voice skill only applies to the hermes-skill recipe");
+  }
+  if (w.review !== undefined) {
+    if (!Array.isArray(w.review) || w.review.length > STAGE_KINDS.length) issues.push(`workflow.review must be a list of stage kinds (${STAGE_KINDS.join(", ")})`);
+    else {
+      const stages = workflowStages(style);
+      const seen = new Set();
+      for (const k of w.review) {
+        if (!STAGE_KINDS.includes(k)) issues.push(`workflow.review: ${JSON.stringify(k)} is not a stage kind (${STAGE_KINDS.join(", ")})`);
+        else if (!stages.includes(k)) issues.push(`workflow.review: ${k} is not a stage of this pack's workflow (${stages.join(", ")})`);
+        if (seen.has(k)) issues.push(`workflow.review: ${JSON.stringify(k)} is listed twice`);
+        seen.add(k);
+      }
+    }
+  }
+  return issues;
+}
+
 /** Validates the hermes block of a research pack: the Hermes skill to use and how the studio's plan maps to its input. */
 export function validateHermesBlock(h) {
   const issues = [];
@@ -338,6 +461,8 @@ export function validateHermesBlock(h) {
   if (!isText(h.input)) issues.push("hermes.input must say how the studio's storyboard and brief map to the skill's input");
   if (!isText(h.output)) issues.push("hermes.output must say what Hermes hands back");
   if (h.mode === "project" && isText(h.input) && !/narration/i.test(h.input)) issues.push("hermes.input for a project skill must say how the run's narration and captions are used");
+  if (h.voice !== undefined && !HERMES_VOICES.includes(h.voice)) issues.push(`hermes.voice must be one of ${HERMES_VOICES.join(", ")} (run: the run's voice stage records the narration; skill: the skill makes its own voice)`);
+  if (h.voice === "skill" && h.mode !== "project") issues.push("hermes.voice skill needs mode project: only a full-project skill records its own voice");
   if (h.variantOf !== undefined) {
     if (!Array.isArray(h.variantOf) || h.variantOf.length > 8 || !h.variantOf.every((v) => typeof v === "string" && ID_RE.test(v))) issues.push("hermes.variantOf must be a list of pack ids this pack is the Hermes research variant of");
   }

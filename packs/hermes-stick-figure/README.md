@@ -34,9 +34,13 @@ Taste rules the skill sets, which the studio passes on:
 
 `hermes.input` in `style.json`, sent to Hermes with every render request:
 
-> A full project, not a quick spec. Use the run's narration (narration.url) as the voiceover and time the skill's captions and shots to it word by word where possible; the run's captions are the text to show. Do not record or synthesise a new voice unless the narration is missing, and say so in the reply's notes if you had to. Use the storyboard's shots as the shot list (about 10 to 12 setups, most 2 to 4 s, the explainer shot longer; the hook in action on frame 1; faces and key props out of the caption band) and the run's script order (hook, belief, the "But" turn, examples, payoff). Keep the skill's style rules.
+> A full project, not a quick spec. The run's skill brief (brief.text) is the project brief Hermes wrote from the approved script: the voiceover text (the run's approved narration script, one sentence per entry for script.json), the shot list (about 10 to 12 setups, most 2 to 4 s, the explainer shot longer; the hook in action on frame 1; faces and key props out of the caption band) and the script order (hook, belief, the "But" turn, examples, payoff). The run has no voice stage: record the voiceover from that narration text with the skill's own Kokoro voice tool (engine/tools/tts_kokoro.py), then align.py for the word times, and time the shots, captions and sound to it as the skill does. Name the voice backend you used in the reply's voice field. Keep the skill's style rules.
 
-What Hermes hands back (`hermes.output`): A finished reel (1080x1920 H.264 MP4, 30 fps) with the run's narration and the skill's captions and sound, published under /clip/ on the media host. It is a reel the studio then QCs (qc-video) and the owner scores on Review; it is never published.
+What Hermes hands back (`hermes.output`): A finished reel (1080x1920 H.264 MP4, 30 fps) with the voice the skill recorded from the run's narration script and the skill's captions and sound, published under /clip/ on the media host. It is a reel the studio then QCs (qc-video) and the owner scores on Review; it is never published.
+
+## Workflow
+
+`hermes-skill` (style.json `workflow`, `hermes.voice: "skill"`): idea → research → script → skill brief → render (Hermes, research only) → quality check. Hermes turns the approved script into the input `/stick-figure` expects (`hermes.input` above), checked by the portal before anything renders; the Hermes render request carries that brief. No pictures are generated. The skill makes its own voice and timing, so the run has no voice stage: the narration script goes to the skill as text, and the video's provenance records the voice backend Hermes names; that backend's provider terms are checked like any voice. Version 0.2.0 adds the workflow and rewrites `hermes.input` for the brief.
 
 ## Fixture
 
@@ -52,7 +56,7 @@ never rendered in CI: there is no Hermes there.
 
 ## Status
 
-`trial` (0.1.0), the highest status a `hermes` pack may have. Its evidence is a `research-source` entry in `curation`
+`trial` (0.2.0), the highest status a `hermes` pack may have. Its evidence is a `research-source` entry in `curation`
 (the pinned skill and the owner's report that it works in Hermes); there is no CI render for a hermes pack and none is
 claimed. Every run is a research trial: recorded on the portal's Styles page with its QC result, the owner's
 presentation score and decision, never published.
