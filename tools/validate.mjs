@@ -33,8 +33,9 @@ export const PROJECT_ENGINES = ["remotion-2d", "html-capture"];
 /** Engines whose render project is a Remotion composition named in renderer.composition. */
 export const COMPOSITION_ENGINES = ["remotion-2d"];
 /**
- * Research-only engines (owner decision): Hermes renders with its own tools. Never above trial, never rendered in CI
- * (there is no Hermes there), so lab and trial do not need a ci-render entry.
+ * Research-only engines (owner decision): Hermes renders with its own tools. Never above trial and never rendered in
+ * CI (there is no Hermes there), so lab and trial need a research-source entry instead of a ci-render one: the source
+ * the look comes from and the report that it renders in Hermes. Nothing in CI pretends to have rendered it.
  */
 export const RESEARCH_ENGINES = ["hermes"];
 export const RESEARCH_MAX_STATUSES = ["draft", "lab", "trial", "retired"];
@@ -57,7 +58,9 @@ export const BEAT_SHAPES = ["ending-cta", "ending-outro", "single"];
 export const CAPTION_SPECS = ["caption-spec-v1"];
 export const QC_GATES = ["G-script", "G-storyboard", "G-assets", "G-voice", "G-technical", "G-presentation", "G-compliance", "G-claims"];
 export const PROVENANCE_TYPES = ["upload", "link", "repo", "skill", "article", "owner-note"];
-export const CURATION_KINDS = ["ci-render", "trial-run", "qc", "hermes-review", "owner-review"];
+export const CURATION_KINDS = ["ci-render", "trial-run", "qc", "hermes-review", "owner-review", "research-source"];
+/** How a Hermes skill is driven: a quick skill from a small JSON spec, or a full project with its own voice and timing. */
+export const HERMES_MODES = ["spec", "project"];
 export const CURATION_RESULTS = ["pass", "fail", "approved", "rejected", "note"];
 
 export const LIMITS = { packFiles: 200, fileBytes: 1024 * 1024, packBytes: 5 * 1024 * 1024, text: 2000, list: 64 };
@@ -67,8 +70,11 @@ const SEMVER_RE = /^(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})$/;
 const WORKER_VERSION_RE = /^\d{1,6}(\.\d{1,6}){0,3}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const PATH_RE = /^[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$/;
+/** A Hermes skill as it is invoked, e.g. "/graph". */
+const SKILL_RE = /^\/[a-z0-9][a-z0-9-]{0,62}$/;
 
-const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "family", "formats", "renderer", "contract", "portal", "fixture", "provenance", "curation"];
+const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "family", "formats", "renderer", "contract", "portal", "fixture", "provenance", "curation", "hermes"];
+const HERMES_KEYS = ["skill", "aliases", "mode", "input", "output", "variantOf"];
 
 const isRecord = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const isText = (v, max = LIMITS.text) => typeof v === "string" && v.trim().length > 0 && v.length <= max;
@@ -270,6 +276,12 @@ export function validateStyle(style, { dirName } = {}) {
     if (fx.expect !== "fixtures/expect.json") issues.push('fixture.expect must be "fixtures/expect.json"');
   }
 
+  if (style.hermes !== undefined) {
+    const research = isRecord(style.renderer) && RESEARCH_ENGINES.includes(style.renderer.engine);
+    if (!research) issues.push(`hermes names the Hermes skill of a ${RESEARCH_ENGINES.join(" or ")} pack; this pack renders with ${String(isRecord(style.renderer) ? style.renderer.engine : "?")}`);
+    for (const m of validateHermesBlock(style.hermes)) issues.push(m);
+  }
+
   if (!Array.isArray(style.provenance) || style.provenance.length === 0) issues.push("provenance must list at least one source the look was learned from");
   else {
     style.provenance.forEach((s, i) => {
@@ -298,8 +310,36 @@ export function validateStyle(style, { dirName } = {}) {
     const has = (kind, results) => style.curation.some((e) => isRecord(e) && e.kind === kind && results.includes(e.result));
     const research = isRecord(style.renderer) && RESEARCH_ENGINES.includes(style.renderer.engine);
     if (RENDERED_STATUSES.includes(style.status) && !research && !has("ci-render", ["pass"])) issues.push(`status ${style.status} needs a passing ci-render entry in curation`);
+    // A hermes pack has no CI render (no Hermes in CI): lab and trial cite the source it comes from and the report that
+    // it renders in Hermes. That evidence is for hermes packs only; a pack VenStudio renders itself needs a real ci-render.
+    if (RENDERED_STATUSES.includes(style.status) && research && !has("research-source", ["pass"])) {
+      issues.push(`status ${style.status} for a ${style.renderer.engine} pack needs a research-source entry with result "pass" in curation (the source and the report that it renders in Hermes); there is no CI render for it`);
+    }
+    if (!research && style.curation.some((e) => isRecord(e) && e.kind === "research-source")) {
+      issues.push(`curation kind research-source is evidence for ${RESEARCH_ENGINES.join(" or ")} packs only; a pack VenStudio renders needs a passing ci-render`);
+    }
     if (OWNER_STATUSES.includes(style.status) && !has("owner-review", ["approved"])) issues.push(`status ${style.status} can only be set by an owner-approved PR: add the owner-review entry with result "approved"`);
     if (OWNER_STATUSES.includes(style.status) && !has("trial-run", ["pass"])) issues.push(`status ${style.status} needs the trial-run entries copied from the portal's Styles page`);
+  }
+  return issues;
+}
+
+/** Validates the hermes block of a research pack: the Hermes skill to use and how the studio's plan maps to its input. */
+export function validateHermesBlock(h) {
+  const issues = [];
+  if (!isRecord(h)) return ["hermes must be an object naming the Hermes skill"];
+  checkKeys(h, HERMES_KEYS, "hermes", issues);
+  if (typeof h.skill !== "string" || !SKILL_RE.test(h.skill)) issues.push('hermes.skill must be a Hermes skill as invoked, e.g. "/graph"');
+  if (h.aliases !== undefined) {
+    if (!Array.isArray(h.aliases) || h.aliases.length > 8 || !h.aliases.every((a) => typeof a === "string" && SKILL_RE.test(a))) issues.push('hermes.aliases must be a list of up to 8 skill names like "/zach-3d-films"');
+    else if (h.aliases.includes(h.skill) || new Set(h.aliases).size !== h.aliases.length) issues.push("hermes.aliases must not repeat the skill or each other");
+  }
+  if (!HERMES_MODES.includes(h.mode)) issues.push(`hermes.mode must be one of ${HERMES_MODES.join(", ")} (spec: a quick skill from a small JSON spec; project: a full project with its own voice and timing)`);
+  if (!isText(h.input)) issues.push("hermes.input must say how the studio's storyboard and brief map to the skill's input");
+  if (!isText(h.output)) issues.push("hermes.output must say what Hermes hands back");
+  if (h.mode === "project" && isText(h.input) && !/narration/i.test(h.input)) issues.push("hermes.input for a project skill must say how the run's narration and captions are used");
+  if (h.variantOf !== undefined) {
+    if (!Array.isArray(h.variantOf) || h.variantOf.length > 8 || !h.variantOf.every((v) => typeof v === "string" && ID_RE.test(v))) issues.push("hermes.variantOf must be a list of pack ids this pack is the Hermes research variant of");
   }
   return issues;
 }
@@ -445,8 +485,25 @@ export function validateRepo(root) {
     .sort();
   const packs = dirs.map((d) => validatePackDir(path.join(packsDir, d)));
   issues.push(...findDuplicates(packs.map((p, i) => ({ id: p.id, composition: readComposition(path.join(packsDir, dirs[i])) }))));
+  const ids = new Set(packs.map((p) => p.id));
+  dirs.forEach((d) => {
+    const h = readHermes(path.join(packsDir, d));
+    for (const v of Array.isArray(h?.variantOf) ? h.variantOf : []) {
+      if (typeof v === "string" && !ids.has(v)) issues.push(`packs/${d}: hermes.variantOf names "${v}", which is not a pack here`);
+      if (v === d) issues.push(`packs/${d}: hermes.variantOf names the pack itself`);
+    }
+  });
   for (const p of packs) issues.push(...p.issues);
   return { packs, issues };
+}
+
+function readHermes(dir) {
+  try {
+    const s = JSON.parse(readFileSync(path.join(dir, "style.json"), "utf8"));
+    return isRecord(s.hermes) ? s.hermes : null;
+  } catch {
+    return null;
+  }
 }
 
 function readComposition(dir) {

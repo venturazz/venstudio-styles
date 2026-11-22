@@ -28,13 +28,26 @@ at runtime and needs no GitHub token. Plan: venstudio `docs/plans/style-system.m
 | `story-read-aloud` | ffmpeg-stills | trial |
 | `hermes-research-explainer` | hermes (research only) | trial |
 | `probe-line-graph` | html-capture | lab |
-| `animated-line-graph` | html-capture, adapted from claude-animation-skills `graph` (MIT) | draft |
-| `minimal-line-art` | html-capture, adapted from claude-animation-skills `minimalistic-graphics` (MIT) | draft |
+| `animated-line-graph` | html-capture, adapted from claude-animation-skills `graph` (MIT) | trial |
+| `minimal-line-art` | html-capture, adapted from claude-animation-skills `minimalistic-graphics` (MIT) | trial |
+| `hermes-breakdown` | hermes, skill `/breakdown` (research only) | trial |
+| `hermes-dan-koe` | hermes, skill `/dan-koe` (research only) | trial |
+| `hermes-graph` | hermes, skill `/graph` (research only) | trial |
+| `hermes-kurzgesagt` | hermes, skill `/kurzgesagt` (research only) | trial |
+| `hermes-low-poly` | hermes, skill `/low-poly` (research only) | trial |
+| `hermes-map-route` | hermes, skill `/map-route` (research only) | trial |
+| `hermes-minecraft` | hermes, skill `/minecraft` (research only) | trial |
+| `hermes-minimalistic-graphics` | hermes, skill `/minimalistic-graphics` (research only) | trial |
+| `hermes-stick-figure` | hermes, skill `/stick-figure` (research only, a full reel) | trial |
+| `hermes-zach-d-films` | hermes, skill `/zach-d-films`, alias `/zach-3d-films` (research only, a full reel) | trial |
 
 The first seven were migrated from the portal's catalogue with their parameters unchanged. `animated-line-graph` and
 `minimal-line-art` adapt two quick skills of https://github.com/artemnovitckii/claude-animation-skills (MIT, fonts OFL);
-their READMEs credit the author and say what was adapted and what changed. The other catalogue styles are
-not packs yet; the portal lists them as Planned.
+their READMEs credit the author and say what was adapted and what changed. The ten `hermes-*` packs are one research
+pack per skill of the same repository (the `zach-3d-films` alias is part of `hermes-zach-d-films`): Hermes, which has
+the repository installed, renders them with the skill itself, so they carry a contract and the mapping to the
+skill's input but no code; they are research only and never published. The other catalogue styles are not packs
+yet; the portal lists them as Planned.
 
 ## Checks
 

@@ -52,5 +52,7 @@ a three-value series, with two captions. `fixtures/expect.json` says it must mea
 
 ## Status
 
-`draft`: written and checked by the validator and the stand-in DOM test, not yet rendered by CI. When this repo's CI
-and venstudio's CI have rendered the fixture, a PR adds the `ci-render` entry to `curation` and sets `trial`.
+`trial` (0.1.1): rendered by this repo's CI (run 44980615532, commit ab2e90f) and by venstudio's CI through the real
+worker (run 44981421800, commit 055e029), both recorded as `ci-render` entries in `curation`. New Video offers it
+under the Trial styles once a worker (0.10.0 or later, with html-capture) reports `pack:minimal-line-art@0.1.1`. Trial runs
+are research only, never published; their outcomes on the portal's Styles page are the evidence toward Proven.

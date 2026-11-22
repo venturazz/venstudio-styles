@@ -3,8 +3,8 @@
   "id": "animated-line-graph",
   "name": "Animated line graph (html-capture)",
   "description": "A smooth line draws itself on white while one big number counts up with its tip and lands on the final value. Adapted from the graph skill of claude-animation-skills (MIT).",
-  "version": "0.1.0",
-  "status": "draft",
+  "version": "0.1.1",
+  "status": "trial",
   "family": "motion-graphics",
   "formats": {
     "supported": [
@@ -117,5 +117,20 @@
       "notes": "The owner chose claude-animation-skills as the first trial source."
     }
   ],
-  "curation": []
+  "curation": [
+    {
+      "date": "2026-11-22",
+      "kind": "ci-render",
+      "ref": "https://github.com/venturazz/venstudio-styles/actions/runs/44980615532 (commit ab2e90f, job remotion: capture-html of the fixture, then tools/check-video.mjs)",
+      "result": "pass",
+      "notes": "This repo's CI rendered fixtures/payload.json with the vendored worker's capture-html and checked size, fps, duration and frame count against fixtures/expect.json. Pack version 0.1.0; render/ is unchanged in 0.1.1."
+    },
+    {
+      "date": "2026-11-22",
+      "kind": "ci-render",
+      "ref": "https://github.com/venturazz/venstudio/actions/runs/44981421800 (commit 055e029, job build-test)",
+      "result": "pass",
+      "notes": "venstudio CI rendered the pack through the real worker: render-video with html-capture (12 s, 1080x1920, 30 fps, 360 frames, H.264 yuv420p, captions burned by the worker), qc-video sampled 6 frames (apps/worker/html-capture-render.test.ts), and capture-html of the fixture passed check-video. Pack version 0.1.0; render/ is unchanged in 0.1.1."
+    }
+  ]
 }

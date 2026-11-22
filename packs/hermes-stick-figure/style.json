@@ -1,0 +1,143 @@
+{
+  "format": 1,
+  "id": "hermes-stick-figure",
+  "name": "Stick-figure explainer reel (Hermes /stick-figure)",
+  "description": "A bright cartoon world with stick people, constant camera motion, whip transitions and 1 to 2 word captions timed to the voice. A full reel Hermes makes with /stick-figure.",
+  "version": "0.1.0",
+  "status": "trial",
+  "family": "animation-2d",
+  "formats": {
+    "supported": [
+      "short"
+    ],
+    "naturalFrame": "portrait"
+  },
+  "renderer": {
+    "engine": "hermes",
+    "minWorkerVersion": "0.10.0",
+    "composition": null
+  },
+  "contract": {
+    "pacing": {
+      "shotSeconds": [
+        2,
+        4
+      ],
+      "hookWithinMs": 1000,
+      "cutsPerMinute": [
+        15,
+        30
+      ],
+      "transitionSec": 0
+    },
+    "onScreen": {
+      "elements": [
+        "plate",
+        "diagram",
+        "particles"
+      ],
+      "motionTokens": [
+        "push",
+        "whip",
+        "shake",
+        "drift"
+      ],
+      "elementAnimation": true
+    },
+    "captions": {
+      "required": true,
+      "spec": "caption-spec-v1",
+      "safeAreaPct": 8
+    },
+    "audio": {
+      "narrated": true,
+      "targetLufs": -14,
+      "maxTruePeakDb": -1,
+      "musicPolicy": "self-generated"
+    },
+    "assets": {
+      "model": "plates-and-diagrams",
+      "kinds": [
+        "image"
+      ],
+      "allowedSources": [
+        "upload",
+        "hermes",
+        "muse",
+        "worker",
+        "licensed",
+        "generated"
+      ],
+      "forbidKinds": [
+        "reference-video"
+      ]
+    }
+  },
+  "portal": {
+    "beatShape": "ending-outro",
+    "qc": {
+      "minPresentationScore": 75,
+      "gates": [
+        "G-technical",
+        "G-presentation",
+        "G-assets",
+        "G-compliance",
+        "G-claims"
+      ]
+    },
+    "themes": [
+      "history",
+      "science",
+      "education"
+    ],
+    "keywords": [
+      "stick figure",
+      "stickman",
+      "what if",
+      "cartoon explainer"
+    ],
+    "cautions": [
+      "Research only: a Hermes render is never published.",
+      "Hermes renders with the claude-animation-skills skill installed there; record what it used.",
+      "Captions: Poppins Bold, white with a dark outline, 1 to 2 words, lowercase, no punctuation; no em dashes on screen.",
+      "Bright saturated palette, ink outlines, slow push-ins with handheld drift, whip transitions with motion blur.",
+      "Check every claim with sources and hedge theories; SFX and a quiet plucked underscore sit under the voice."
+    ],
+    "sources": [
+      "https://github.com/artemnovitckii/claude-animation-skills/tree/86f70106c9aeae1334184467da5776c533ada3bc/skills/stick-figure"
+    ]
+  },
+  "fixture": {
+    "payload": "fixtures/payload.json",
+    "expect": "fixtures/expect.json"
+  },
+  "provenance": [
+    {
+      "type": "skill",
+      "ref": "https://github.com/artemnovitckii/claude-animation-skills@86f70106c9aeae1334184467da5776c533ada3bc (skills/stick-figure/SKILL.md), installed in Hermes as /stick-figure",
+      "licence": "MIT, Copyright (c) 2026 Artem Novitckii (the repository's LICENSE); its fonts (Inter, Inter Tight, Poppins, JetBrains Mono, Montserrat, Lora) under the SIL Open Font License 1.1",
+      "notes": "Learned from the skill's SKILL.md: what it makes, its pacing, on-screen elements, taste rules, formats (1080x1920, 30 fps) and natural frame (portrait). Hermes renders with the skill itself; this pack holds no code, frames or audio from the repository, only the contract and the mapping from the studio's plan to the skill's input. Credit: Artem Novitckii."
+    },
+    {
+      "type": "owner-note",
+      "ref": "venturazz/venstudio docs/plans/style-system.md (first trial source: claude-animation-skills, already installed and working in Hermes)",
+      "licence": "owner",
+      "notes": "The owner reports that this repository is installed in Hermes and works, and asked for every skill of it to be trialable and curatable from Studio."
+    }
+  ],
+  "curation": [
+    {
+      "date": "2026-11-22",
+      "kind": "research-source",
+      "ref": "https://github.com/artemnovitckii/claude-animation-skills@86f70106c9aeae1334184467da5776c533ada3bc (skills/stick-figure/SKILL.md); owner report: installed in Hermes and working",
+      "result": "pass",
+      "notes": "Evidence for trial of a hermes pack (there is no Hermes in CI, so no CI render exists or is claimed). The skill is in the source repository at the pinned commit and the owner reports it works in Hermes. Every portal run of this pack is a research trial, never published."
+    }
+  ],
+  "hermes": {
+    "skill": "/stick-figure",
+    "mode": "project",
+    "input": "A full project, not a quick spec. Use the run's narration (narration.url) as the voiceover and time the skill's captions and shots to it word by word where possible; the run's captions are the text to show. Do not record or synthesise a new voice unless the narration is missing, and say so in the reply's notes if you had to. Use the storyboard's shots as the shot list (about 10 to 12 setups, most 2 to 4 s, the explainer shot longer; the hook in action on frame 1; faces and key props out of the caption band) and the run's script order (hook, belief, the \"But\" turn, examples, payoff). Keep the skill's style rules.",
+    "output": "A finished reel (1080x1920 H.264 MP4, 30 fps) with the run's narration and the skill's captions and sound, published under /clip/ on the media host. It is a reel the studio then QCs (qc-video) and the owner scores on Review; it is never published."
+  }
+}

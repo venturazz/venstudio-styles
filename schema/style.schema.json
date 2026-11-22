@@ -546,7 +546,8 @@
               "trial-run",
               "qc",
               "hermes-review",
-              "owner-review"
+              "owner-review",
+              "research-source"
             ]
           },
           "ref": {
@@ -565,6 +566,63 @@
           "notes": {
             "type": "string"
           }
+        }
+      },
+      "description": "The record. lab and above need a passing ci-render, except engine hermes, which needs a passing research-source (the source and the report that it renders in Hermes; there is no Hermes in CI). research-source is refused on any other engine."
+    },
+    "hermes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "skill",
+        "mode",
+        "input",
+        "output"
+      ],
+      "description": "Engine hermes only: the Hermes skill the portal names in the render request, and how the studio's plan maps to its input.",
+      "properties": {
+        "skill": {
+          "type": "string",
+          "pattern": "^/[a-z0-9][a-z0-9-]{0,62}$",
+          "description": "The skill as invoked in Hermes, e.g. /graph."
+        },
+        "aliases": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^/[a-z0-9][a-z0-9-]{0,62}$"
+          },
+          "description": "Other names of the same skill, e.g. /zach-3d-films."
+        },
+        "mode": {
+          "enum": [
+            "spec",
+            "project"
+          ],
+          "description": "spec: a quick skill from a small JSON spec; project: a full project with its own voice and caption timing (input must say how the run's narration is used)."
+        },
+        "input": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "How the storyboard, brief, narration and captions map to the skill's input."
+        },
+        "output": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "What Hermes hands back (a /clip/ URL to an MP4 the studio QCs)."
+        },
+        "variantOf": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"
+          },
+          "description": "Packs (in this repo) this pack is the Hermes research variant of."
         }
       }
     }
