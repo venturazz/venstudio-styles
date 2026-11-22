@@ -3081,8 +3081,10 @@ export function htmlCaptureFfmpegArgs(o: { fps: number; frames: number; output: 
     "-y", "-hide_banner", "-loglevel", "error",
     "-f", "image2pipe", "-framerate", String(o.fps), "-c:v", "mjpeg", "-i", "pipe:0",
     "-frames:v", String(o.frames),
-    "-vf", [...(o.burn ? [o.burn] : []), "format=yuv420p"].join(","),
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-threads", "2", "-pix_fmt", "yuv420p", "-r", String(o.fps),
+    // Chromium's JPEG frames are full range (yuvj420p). Convert to limited range so the file is plain yuv420p,
+    // which is what players and YouTube expect; otherwise colours look washed out.
+    "-vf", [...(o.burn ? [o.burn] : []), "scale=in_range=full:out_range=tv", "format=yuv420p"].join(","),
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-threads", "2", "-pix_fmt", "yuv420p", "-color_range", "tv", "-r", String(o.fps),
     "-movflags", "+faststart",
     "-an",
     o.output,
