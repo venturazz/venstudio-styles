@@ -3297,6 +3297,14 @@ export const HTML_PAGE_GUARD_SOURCE = String.raw`(() => {
   g.Worker = function (u) { refuse("Worker " + String(u)); };
   g.SharedWorker = function (u) { refuse("SharedWorker " + String(u)); };
   g.open = function (u) { refuse("window.open " + String(u)); };
+  // Strings as code: refused here as well as by the CSP (no 'unsafe-eval'), so a page that swallows the CSP error in a
+  // try/catch is still reported. Every Function constructor reachable from a function's prototype is replaced too.
+  g.eval = function () { refuse("eval"); };
+  const noCtor = function () { refuse("Function constructor"); };
+  for (const f of [function () {}, async function () {}, function* () {}, async function* () {}]) {
+    try { Object.defineProperty(Object.getPrototypeOf(f), "constructor", { value: noCtor, writable: false, configurable: false }); } catch (e) {}
+  }
+  try { g.Function = noCtor; } catch (e) {}
   if (g.navigator) {
     try { g.navigator.sendBeacon = (u) => refuse("sendBeacon " + String(u)); } catch (e) {}
     const sw = { register: (u) => { report("serviceWorker " + String(u)); return Promise.reject(new Error("Service workers are not available while rendering")); }, getRegistrations: () => Promise.resolve([]), ready: new Promise(() => {}), controller: null, addEventListener: () => {}, removeEventListener: () => {} };
@@ -3591,6 +3599,11 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<HtmlCaptureRes
         // a blocked attempt, recorded whatever the page's own scripts do with the violation event.
         if (pageMode && (e?.source === "security" || e?.source === "violation" || /Refused to /.test(String(e?.text ?? "")))) violation(`CSP: ${String(e?.text ?? "").slice(0, 240)}`);
         else if (e?.level === "error" && consoleErrors.length < 20) consoleErrors.push(String(e.text ?? "").slice(0, 300));
+      } else if (method === "Audits.issueAdded") {
+        // Current Chromium reports CSP refusals as an Audits issue rather than a log entry.
+        const issue = params.issue as { code?: string; details?: { contentSecurityPolicyIssueDetails?: { violatedDirective?: string; blockedURL?: string } } } | undefined;
+        const d = issue?.details?.contentSecurityPolicyIssueDetails;
+        if (pageMode && issue?.code === "ContentSecurityPolicyIssue") violation(`CSP: ${d?.violatedDirective ?? "a directive"}${d?.blockedURL ? ` (${String(d.blockedURL).slice(0, 160)})` : ""}`);
       } else if (method === "Page.loadEventFired") loaded?.();
     });
     const page = (method: string, params: Record<string, unknown> = {}, timeoutMs?: number) => cdp.send(method, params, sessionId, timeoutMs);
@@ -3599,6 +3612,7 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<HtmlCaptureRes
     await page("Runtime.enable");
     await page("Page.enable");
     await page("Log.enable");
+    if (pageMode) await page("Audits.enable").catch(() => undefined);
     await page("Runtime.addBinding", { name: "__venstudioBlocked" });
     await page("Emulation.setDeviceMetricsOverride", { width: o.width, height: o.height, deviceScaleFactor: 1, mobile: false });
     await page("Page.addScriptToEvaluateOnNewDocument", { source: VIRTUAL_CLOCK_SOURCE });
