@@ -1,0 +1,95 @@
+/* Colours, faces and sizes from the `graph` skill of github.com/artemnovitckii/claude-animation-skills (MIT, see LICENSE). */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+html,
+body {
+  overflow: hidden;
+  background: #fff;
+}
+#stage {
+  position: relative;
+  overflow: hidden;
+  background: #fff;
+}
+#stage.dark {
+  background: #000;
+}
+#root {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1080px;
+  height: 1920px;
+  transform-origin: 0 0;
+}
+.scene {
+  --bg: #fff;
+  --fg: #000;
+  --mute: #8c8c8c;
+  --grid: #e6e6e6;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+.scene.dark {
+  --bg: #000;
+  --fg: #fff;
+  --mute: #8a8a8a;
+  --grid: #262626;
+}
+.lab {
+  position: absolute;
+  left: 120px;
+  top: 330px;
+  font: 500 34px "Inter", "DejaVu Sans", sans-serif;
+  color: var(--mute);
+  white-space: nowrap;
+  max-width: 840px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.num {
+  position: absolute;
+  left: 114px;
+  top: 382px;
+  font: 700 180px/1 "Inter Tight", "DejaVu Sans", sans-serif;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.num.title {
+  top: 360px;
+  width: 850px;
+  font-size: 96px;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  white-space: normal;
+  overflow-wrap: break-word;
+  max-height: 320px;
+  overflow: hidden;
+}
+svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.grid {
+  stroke: var(--grid);
+}
+.base,
+.drop,
+.line {
+  stroke: var(--fg);
+}
+.halo {
+  fill: var(--fg);
+}
+.tip {
+  fill: var(--fg);
+  stroke: var(--bg);
+}

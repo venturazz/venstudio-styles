@@ -26,15 +26,21 @@ at runtime and needs no GitHub token. Plan: venstudio `docs/plans/style-system.m
 | `ambient-loop` | ffmpeg-stills | trial |
 | `travel-documentary` | ffmpeg-stills | trial |
 | `story-read-aloud` | ffmpeg-stills | trial |
+| `hermes-research-explainer` | hermes (research only) | trial |
+| `probe-line-graph` | html-capture | lab |
+| `animated-line-graph` | html-capture, adapted from claude-animation-skills `graph` (MIT) | draft |
+| `minimal-line-art` | html-capture, adapted from claude-animation-skills `minimalistic-graphics` (MIT) | draft |
 
-All seven were migrated from the portal's catalogue with their parameters unchanged. The other catalogue styles are
+The first seven were migrated from the portal's catalogue with their parameters unchanged. `animated-line-graph` and
+`minimal-line-art` adapt two quick skills of https://github.com/artemnovitckii/claude-animation-skills (MIT, fonts OFL);
+their READMEs credit the author and say what was adapted and what changed. The other catalogue styles are
 not packs yet; the portal lists them as Planned.
 
 ## Checks
 
 ```
 node tools/validate.mjs
-node --test "tools/*.test.mjs"
+node --test "tools/*.test.mjs"   # includes html-pages.test.mjs: every html-capture page run in a stand-in DOM
 ```
 
 CI (`.github/workflows/ci.yml`) runs both, then assembles the Remotion project, typechecks it, runs the renderer's
