@@ -1,0 +1,27 @@
+{
+  "name": "@venstudio/render-remotion",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Remotion templates the VenStudio worker renders the remotion-2d engine with. Installed on the worker, not in the portal.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "probe": "node scripts/probe.mjs",
+    "probe:full": "node scripts/probe.mjs --full"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.543",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.543"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "typescript": "5.9.2"
+  }
+}

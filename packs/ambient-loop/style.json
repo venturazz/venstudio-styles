@@ -1,0 +1,140 @@
+{
+  "format": 1,
+  "id": "ambient-loop",
+  "name": "Relaxing ambience loop",
+  "description": "Long, calm shots with ambient sound and no narration.",
+  "version": "1.0.0",
+  "status": "trial",
+  "family": "ambient",
+  "formats": {
+    "supported": [
+      "short",
+      "long"
+    ],
+    "naturalFrame": "both"
+  },
+  "renderer": {
+    "engine": "ffmpeg-stills",
+    "minWorkerVersion": "0.9.0",
+    "composition": null
+  },
+  "contract": {
+    "pacing": {
+      "shotSeconds": [
+        20,
+        60
+      ],
+      "hookWithinMs": 5000,
+      "cutsPerMinute": [
+        1,
+        3
+      ],
+      "transitionSec": 0.5
+    },
+    "onScreen": {
+      "elements": [
+        "plate"
+      ],
+      "motionTokens": [
+        "drift"
+      ],
+      "elementAnimation": false
+    },
+    "captions": {
+      "required": false,
+      "spec": "caption-spec-v1",
+      "safeAreaPct": 8
+    },
+    "audio": {
+      "narrated": false,
+      "targetLufs": -14,
+      "maxTruePeakDb": -1,
+      "musicPolicy": "self-or-licensed"
+    },
+    "assets": {
+      "model": "image-per-shot",
+      "kinds": [
+        "image",
+        "audio"
+      ],
+      "allowedSources": [
+        "upload",
+        "hermes",
+        "muse",
+        "worker",
+        "licensed",
+        "generated"
+      ],
+      "forbidKinds": [
+        "reference-video"
+      ]
+    }
+  },
+  "portal": {
+    "beatShape": "single",
+    "qc": {
+      "minPresentationScore": 75,
+      "gates": [
+        "G-technical",
+        "G-presentation",
+        "G-assets",
+        "G-compliance",
+        "G-claims"
+      ]
+    },
+    "themes": [
+      "relax",
+      "science"
+    ],
+    "keywords": [
+      "relax",
+      "relaxing",
+      "ambient",
+      "sleep",
+      "rain",
+      "lofi",
+      "lo-fi",
+      "study",
+      "focus",
+      "calm"
+    ],
+    "cautions": [
+      "Music is the main Content ID risk: self-composed or licensed tracks only.",
+      "Long videos need real variation, or they read as repetitive."
+    ],
+    "sources": []
+  },
+  "fixture": {
+    "payload": "fixtures/payload.json",
+    "expect": "fixtures/expect.json"
+  },
+  "provenance": [
+    {
+      "type": "article",
+      "ref": "venturazz/venstudio docs/research/03-production-styles-and-muse-capabilities.md",
+      "licence": "VenStudio research notes (owner)",
+      "notes": "Where the style was first described: niche, engine, Muse placement and cautions."
+    },
+    {
+      "type": "article",
+      "ref": "venturazz/venstudio docs/research/04-autonomous-studio-workflow.md",
+      "licence": "VenStudio research notes (owner)",
+      "notes": "Template lifecycle, QC gates and the copyright checklist this pack's portal parameters come from."
+    },
+    {
+      "type": "skill",
+      "ref": "Hermes skill narrated-video-from-images (described in venturazz/venstudio docs/plans/2026-11-20-render-templates-from-skills.md)",
+      "licence": "not recorded in the studio; the skill lives in the owner's Hermes install, only its parameters are used",
+      "notes": "Stills with camera moves and xfade transitions between shots."
+    }
+  ],
+  "curation": [
+    {
+      "date": "2026-11-21",
+      "kind": "ci-render",
+      "ref": "venturazz/venstudio CI, PR #15 (f712dcf): scripts/e2e.sh render-video with generated stills, then qc-video",
+      "result": "pass",
+      "notes": "The stills engine this pack's parameters drive. The pack's own fixture is rendered by the styles repo CI."
+    }
+  ]
+}
