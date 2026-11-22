@@ -28,8 +28,8 @@ No worker runs this engine: the portal asks Hermes directly (through its Hermes 
 ## Fixture
 
 `fixtures/payload.json` shows the render request the portal builds (shots, narration, captions). It is never
-rendered in CI: there is no Hermes there. That is also why this pack has no `ci-render` entry, and why it can never
-leave `trial`.
+rendered in CI: there is no Hermes there. That is also why this pack has no `ci-render` entry but a `research-source`
+one (the owner decision that made Hermes a research renderer), and why it can never leave `trial`.
 
 ## Provenance
 
@@ -37,4 +37,5 @@ leave `trial`.
 
 ## Status
 
-`trial`, the highest status an engine `hermes` pack may have.
+`trial` (0.1.1), the highest status an engine `hermes` pack may have. The `research-source` entry in `curation` is
+its evidence for trial; there is no CI render for a hermes pack.
