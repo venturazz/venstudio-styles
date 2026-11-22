@@ -22,7 +22,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync } from "node:fs";
-import { chmod, copyFile, lstat, mkdir, mkdtemp, open, readdir, readFile, readlink, rename, rm, stat, statfs, symlink, writeFile } from "node:fs/promises";
+import { chmod, copyFile, cp, lstat, mkdir, mkdtemp, open, readdir, readFile, readlink, realpath, rename, rm, stat, statfs, symlink, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
@@ -2785,6 +2785,8 @@ export const ENV_LIMITS = {
   secondsPerVideoSecond: 600,
   stripComponents: 8,
   redirects: 5,
+  downloadMinMs: 10 * 60_000,
+  installMaxMs: 90 * 60_000,
   logBytes: 64 * 1024,
   npmTimeoutMs: 20 * 60_000,
   pipTimeoutMs: 30 * 60_000,
@@ -3126,7 +3128,7 @@ export function parseTar(buf: Buffer): ArchiveEntry[] {
     longLink = null;
     pax = {};
     const mode = octal(h.subarray(100, 108));
-    if (type === "0" || type === "7") out.push({ path: name, type: "file", mode, data: Buffer.from(data) });
+    if (type === "0" || type === "7") out.push({ path: name, type: "file", mode, data });
     else if (type === "5") out.push({ path: name, type: "dir", mode });
     else if (type === "2") out.push({ path: name, type: "symlink", mode, target: link });
     else if (type === "1") throw new EnvInstallError(`tar: ${name} is a hard link; refused`);
@@ -3225,41 +3227,98 @@ export function planExtraction(entries: readonly ArchiveEntry[], o: { strip: num
   return out;
 }
 
+/**
+ * Refuses to write `rel` under `root` when any existing component on the way (the target itself included) is a
+ * symlink: mkdir, writeFile and copyFile all follow symlinks in parent folders, so one left by an earlier step or an
+ * earlier entry could otherwise send a write outside the environment. Components that do not exist yet are created by
+ * this code, as real folders.
+ */
+export async function assertNoSymlinkOnPath(root: string, rel: string): Promise<void> {
+  const parts = rel.split("/").filter((x) => x && x !== ".");
+  let cur = path.resolve(root);
+  for (const part of parts) {
+    if (part === "..") throw new EnvInstallError(`${rel} leaves the environment`);
+    cur = path.join(cur, part);
+    const st = await lstat(cur).catch(() => null);
+    if (!st) return;
+    if (st.isSymbolicLink()) throw new EnvInstallError(`${rel} would be written through the symlink ${path.relative(root, cur)}; refused`);
+  }
+}
+
+/**
+ * Every symlink under `root` must resolve (through the kernel, following chains) inside `root`, or dangle with a
+ * target that stays inside it textually. Checked after each step and before the probe; a link that escapes fails the
+ * install. `skip` names the folders npm and pip filled (a venv links to the system python by design). Returns the
+ * number of links checked.
+ */
+export async function assertLinksInside(root: string, skip: readonly string[] = []): Promise<number> {
+  const real = await realpath(root);
+  const skipped = new Set(skip.map((d) => path.join(real, d)));
+  let n = 0;
+  const walk = async (d: string, depth: number): Promise<void> => {
+    if (depth > 40) throw new EnvInstallError("the environment is nested too deep");
+    for (const name of await readdir(d)) {
+      const p = path.join(d, name);
+      if (skipped.has(p)) continue;
+      const st = await lstat(p);
+      if (st.isSymbolicLink()) {
+        n++;
+        const target = await readlink(p);
+        const resolved = await realpath(p).catch(() => null);
+        const inside = (x: string) => x === real || x.startsWith(`${real}${path.sep}`);
+        if (resolved !== null ? !inside(resolved) : path.isAbsolute(target) || !inside(path.resolve(await realpath(path.dirname(p)), target))) {
+          throw new EnvInstallError(`symlink ${path.relative(root, p)} -> ${target} resolves outside the environment; refused`);
+        }
+      } else if (st.isDirectory()) await walk(p, depth + 1);
+    }
+  };
+  await walk(real, 0);
+  return n;
+}
+
 /** Writes planned entries under `root`: directories, then files, then symlinks (so nothing is written through one). */
-export async function writeExtraction(root: string, planned: readonly ArchiveEntry[]): Promise<number> {
+export async function writeExtraction(root: string, planned: readonly ArchiveEntry[], skipLinkCheck: readonly string[] = []): Promise<number> {
   const real = path.resolve(root);
-  const inside = (rel: string) => {
+  const inside = async (rel: string) => {
     const abs = path.resolve(real, rel);
     if (abs !== real && !abs.startsWith(`${real}${path.sep}`)) throw new EnvInstallError(`${rel} would be written outside the environment`);
+    await assertNoSymlinkOnPath(real, rel);
     return abs;
   };
-  for (const e of planned) if (e.type === "dir") await mkdir(inside(e.path), { recursive: true, mode: 0o755 });
+  for (const e of planned) if (e.type === "dir") await mkdir(await inside(e.path), { recursive: true, mode: 0o755 });
   let n = 0;
   for (const e of planned) {
     if (e.type !== "file") continue;
-    const abs = inside(e.path);
+    const abs = await inside(e.path);
     await mkdir(path.dirname(abs), { recursive: true });
-    // An earlier step may have left a symlink here; never write through one.
-    const prev = await lstat(abs).catch(() => null);
-    if (prev?.isSymbolicLink()) throw new EnvInstallError(`${e.path} is a symlink already; refused`);
     await writeFile(abs, e.data ?? Buffer.alloc(0), { mode: e.mode });
     await chmod(abs, e.mode);
     n++;
   }
   for (const e of planned) {
     if (e.type !== "symlink") continue;
-    const abs = inside(e.path);
+    const abs = await inside(e.path);
     await mkdir(path.dirname(abs), { recursive: true });
     await rm(abs, { force: true });
     await symlink(e.target as string, abs);
     n++;
   }
+  // A chain of links can escape where each target looks harmless on its own (b -> ., c -> b/b/../..): the kernel decides.
+  await assertLinksInside(real, skipLinkCheck);
   return n;
 }
 
-/** Decompresses and unpacks one download into the environment. tar.xz needs xz on the machine (it is checked). */
-export async function extractDownload(file: string, step: Extract<EnvStep, { kind: "download" }>, envDir: string, signal: AbortSignal): Promise<number> {
+const gunzipAsync = (b: Buffer, maxOutputLength: number) =>
+  new Promise<Buffer>((resolve, reject) => zlib.gunzip(b, { maxOutputLength }, (err, out) => (err ? reject(new EnvInstallError(`gzip: ${err.message}`)) : resolve(out))));
+
+/**
+ * Decompresses and unpacks one download into the environment. tar.xz needs xz on the machine (it is checked).
+ * Archives are held in memory (at most 512 MB packed, 1 GB unpacked); gzip runs on libuv's thread pool, so a job that
+ * renders meanwhile keeps its event loop.
+ */
+export async function extractDownload(file: string, step: Extract<EnvStep, { kind: "download" }>, envDir: string, signal: AbortSignal, toolDirs: readonly string[] = []): Promise<number> {
   if (step.extract === "none") {
+    await assertNoSymlinkOnPath(envDir, step.to);
     const dest = path.join(envDir, step.to);
     await mkdir(path.dirname(dest), { recursive: true });
     await copyFile(file, dest);
@@ -3270,12 +3329,10 @@ export async function extractDownload(file: string, step: Extract<EnvStep, { kin
   let entries: ArchiveEntry[];
   if (step.extract === "zip") entries = parseZip(body);
   else {
-    let tar: Buffer;
-    if (step.extract === "tar.gz") tar = zlib.gunzipSync(body, { maxOutputLength: ENV_LIMITS.extractBytes + 1024 * 1024 });
-    else tar = await xzDecompress(file, signal);
+    const tar = step.extract === "tar.gz" ? await gunzipAsync(body, ENV_LIMITS.extractBytes + 1024 * 1024) : await xzDecompress(file, signal);
     entries = parseTar(tar);
   }
-  return writeExtraction(envDir, planExtraction(entries, { strip: step.stripComponents, to: step.to }));
+  return writeExtraction(envDir, planExtraction(entries, { strip: step.stripComponents, to: step.to }), toolDirs);
 }
 
 function xzDecompress(file: string, signal: AbortSignal): Promise<Buffer> {
@@ -3685,21 +3742,47 @@ export function neededEnvironments(packs: readonly InstalledEnvPack[]): Array<{ 
  * The next environment to install, or null. Pure: an environment is due when it has no entry, its recipe changed, it
  * is "installing" from a run that never finished (a restart), or it failed and its backoff is over.
  */
-export function nextEnvToInstall(needed: ReadonlyArray<{ recipe: EnvRecipe }>, state: Readonly<EnvState>, now: number, platform: string | null = envPlatform()): EnvRecipe | null {
+export function nextEnvToInstall(needed: ReadonlyArray<{ recipe: EnvRecipe }>, state: Readonly<EnvState>, now: number, platform: string | null = envPlatform(), usable?: ReadonlySet<string>): EnvRecipe | null {
   for (const n of needed) {
     if (!platform || !n.recipe.platforms.includes(platform)) continue;
     const s = state[envKey(n.recipe)];
-    if (!s || s.recipeSha256 !== recipeSha256(n.recipe) || s.status === "installing") return n.recipe;
-    if (s.status === "failed" && now >= s.nextAttemptAt) return n.recipe;
+    if (!s || s.recipeSha256 !== recipeSha256(n.recipe)) return n.recipe;
+    // "installing" left by a process that died mid-install (an OOM kill, a power cut) counts as a failed attempt: it
+    // waits for the backoff its start already set, so a crash does not become a loop.
+    if ((s.status === "failed" || s.status === "installing") && now >= s.nextAttemptAt) return n.recipe;
+    // Ready on paper but not usable here (its folder is gone, or its probe fails now): install it again.
+    if (s.status === "ready" && usable && !usable.has(envKey(n.recipe))) return n.recipe;
   }
   return null;
+}
+
+/** The state when an install starts: the attempt is counted now, so a crash mid-install still backs off. Pure. */
+export function startEnvAttempt(state: Readonly<EnvState>, recipe: EnvRecipe, now: number): EnvState {
+  const k = envKey(recipe);
+  const prev = state[k];
+  const same = prev?.recipeSha256 === recipeSha256(recipe);
+  const attempts = (same && prev.status !== "ready" ? prev.attempts : 0) + 1;
+  return {
+    ...state,
+    [k]: { id: recipe.id, version: recipe.version, status: "installing", detail: "installing", attempts, nextAttemptAt: now + envBackoffMs(attempts), updatedAt: now, recipeSha256: recipeSha256(recipe) },
+  };
+}
+
+/** The state after an install was stopped on purpose (shutdown, a new bundle): due again at once, the attempt not counted. Pure. */
+export function stopEnvAttempt(state: Readonly<EnvState>, recipe: EnvRecipe, now: number): EnvState {
+  const k = envKey(recipe);
+  const prev = state[k];
+  if (!prev || prev.status !== "installing") return { ...state };
+  return { ...state, [k]: { ...prev, status: "failed", detail: "stopped before it finished; it starts again", attempts: Math.max(0, prev.attempts - 1), nextAttemptAt: 0, updatedAt: now } };
 }
 
 /** The state after an install attempt. Pure. */
 export function recordEnvResult(state: Readonly<EnvState>, recipe: EnvRecipe, result: { ok: true } | { ok: false; reason: string }, now: number): EnvState {
   const k = envKey(recipe);
   const prev = state[k];
-  const attempts = result.ok ? 0 : (prev && prev.recipeSha256 === recipeSha256(recipe) ? prev.attempts : 0) + 1;
+  const same = prev !== undefined && prev.recipeSha256 === recipeSha256(recipe);
+  // An attempt started with startEnvAttempt is counted already; one recorded without it counts here.
+  const attempts = result.ok ? 0 : same && prev.status === "installing" ? prev.attempts : (same ? prev.attempts : 0) + 1;
   return {
     ...state,
     [k]: {
@@ -3716,16 +3799,24 @@ export function recordEnvResult(state: Readonly<EnvState>, recipe: EnvRecipe, re
 }
 
 /** The claim body's environments: one per needed environment, with its status (a recipe for another platform says so). Pure. */
-export function envReports(needed: ReadonlyArray<{ recipe: EnvRecipe; packs: readonly InstalledEnvPack[] }>, state: Readonly<EnvState>, platform: string | null = envPlatform()): EnvReport[] {
+export function envReports(needed: ReadonlyArray<{ recipe: EnvRecipe; packs: readonly InstalledEnvPack[] }>, state: Readonly<EnvState>, platform: string | null = envPlatform(), usable?: ReadonlySet<string>): EnvReport[] {
   return needed.slice(0, 50).map((n) => {
     const s = state[envKey(n.recipe)];
     const fresh = s && s.recipeSha256 === recipeSha256(n.recipe);
     const off = !platform || !n.recipe.platforms.includes(platform);
+    // "ready" is only said while the environment is usable here (its probe passes); otherwise it is due again.
+    const broken = fresh && s.status === "ready" && usable !== undefined && !usable.has(envKey(n.recipe));
     return {
       id: n.recipe.id,
       version: n.recipe.version,
-      status: off ? "failed" : fresh ? s.status : "installing",
-      detail: off ? `this machine (${process.platform}-${process.arch}) is not one of the recipe's platforms (${n.recipe.platforms.join(", ")})` : fresh ? s.detail : "waiting to install",
+      status: off || broken ? "failed" : fresh ? s.status : "installing",
+      detail: off
+        ? `this machine (${process.platform}-${process.arch}) is not one of the recipe's platforms (${n.recipe.platforms.join(", ")})`
+        : broken
+          ? "installed, but its probe no longer passes here (or its folder is gone); it installs again"
+          : fresh
+            ? s.detail
+            : "waiting to install",
       packs: n.packs.map((p) => `${p.id}@${p.version}`).slice(0, 20),
       at: new Date(fresh ? s.updatedAt : Date.now()).toISOString(),
     };
@@ -3809,14 +3900,18 @@ export async function installEnvironment(o: { recipe: EnvRecipe; packDir: string
     try {
       const run = h.run ?? ((argv, ro) => runFixed(argv, ro));
       const toolEnv = commandEnv({ recipe: r, envDir, home: scratch, tmp: scratch, network: true });
+      const toolDirs = r.steps.flatMap((x) => (x.kind === "npm" || x.kind === "pip" ? [x.to] : []));
       for (const s of r.steps) {
         if (s.kind === "download") {
           if (s.platform && s.platform !== platform) continue;
           say(`downloading ${s.url}`);
-          const file = await downloadPinned({ url: s.url, sha256: s.sha256, bytes: s.bytes, hosts: r.hosts, dir: scratch, cacheDir: o.cacheDir ?? null, signal: o.signal, fetch: h.fetch });
-          const n = await extractDownload(file, s, envDir, o.signal);
+          // A stalled server must not hold the install forever: at least 10 min, or 100 KB/s for a large file.
+          const dlSignal = AbortSignal.any([o.signal, AbortSignal.timeout(Math.max(ENV_LIMITS.downloadMinMs, Math.ceil(s.bytes / 100)))]);
+          const file = await downloadPinned({ url: s.url, sha256: s.sha256, bytes: s.bytes, hosts: r.hosts, dir: scratch, cacheDir: o.cacheDir ?? null, signal: dlSignal, fetch: h.fetch });
+          const n = await extractDownload(file, s, envDir, o.signal, toolDirs);
           say(`${path.basename(new URL(s.url).pathname)}: sha256 verified, ${n} entr${n === 1 ? "y" : "ies"} into ${s.to}`);
         } else if (s.kind === "npm") {
+          await assertNoSymlinkOnPath(envDir, s.to);
           const dir = path.join(envDir, s.to);
           await mkdir(dir, { recursive: true });
           const lockText = await readFile(path.join(o.packDir, s.lockfile), "utf8");
@@ -3834,6 +3929,7 @@ export async function installEnvironment(o: { recipe: EnvRecipe; packDir: string
             if (rb.code !== 0) throw new EnvInstallError(failText(`npm rebuild ${s.allowScripts.join(" ")}`, rb));
           }
         } else if (s.kind === "pip") {
+          await assertNoSymlinkOnPath(envDir, s.to);
           const venv = path.join(envDir, s.to);
           const req = path.join(o.packDir, s.requirements);
           say(`python3 -m venv ${s.to}; pip install --require-hashes --only-binary=:all: --no-deps`);
@@ -3844,6 +3940,7 @@ export async function installEnvironment(o: { recipe: EnvRecipe; packDir: string
           if (got.code !== 0) throw new EnvInstallError(failText("pip install", got));
         }
       }
+      await assertLinksInside(envDir, toolDirs);
       const probe = await probeEnvironment({ recipe: r, packDir: o.packDir, envDir, workDir: scratch, signal: o.signal, run: h.run });
       if (!probe.ok) throw new EnvInstallError(probe.reason);
       const list = await envFileList(envDir);
@@ -3939,6 +4036,7 @@ export async function readyEnvironments(home: string, packs: readonly InstalledE
       envProbeCache.set(`${home}\0${k}\0${s.recipeSha256}`, p);
     }
     if (await p) ready.add(k);
+    else envProbeCache.delete(`${home}\0${k}\0${s.recipeSha256}`); // only a pass is cached: a failure is probed again
   }
   return ready;
 }
@@ -3980,26 +4078,36 @@ export async function startEnvTask(home: string, hooks?: EnvHooks): Promise<EnvT
   const { packs } = await installedEnvPacks(home);
   const needed = neededEnvironments(packs);
   const state = await readEnvState(home);
-  const recipe = nextEnvToInstall(needed, state, Date.now(), hooks?.platform === undefined ? envPlatform() : hooks.platform);
+  const usable = await readyEnvironments(home, packs, state);
+  const recipe = nextEnvToInstall(needed, state, Date.now(), hooks?.platform === undefined ? envPlatform() : hooks.platform, usable);
   if (!recipe) return null;
   const pack = needed.find((n) => envKey(n.recipe) === envKey(recipe))!.packs[0];
-  const prev = state[envKey(recipe)];
-  await writeEnvState(home, {
-    ...state,
-    [envKey(recipe)]: { id: recipe.id, version: recipe.version, status: "installing", detail: "installing", attempts: prev?.recipeSha256 === recipeSha256(recipe) ? prev.attempts : 0, nextAttemptAt: 0, updatedAt: Date.now(), recipeSha256: recipeSha256(recipe) },
-  });
+  // The pack's files are copied first, so a new env-packs.json replacing the pack folder cannot pull them away mid-install.
+  const packCopy = await mkdtemp(path.join(os.tmpdir(), `vs-envpack-${recipe.id}-`));
+  await cp(pack.dir, packCopy, { recursive: true });
+  await writeEnvState(home, startEnvAttempt(state, recipe, Date.now()));
   const abort = new AbortController();
   const task: EnvTask = { recipe, abort, promise: Promise.resolve() };
   log(`environment ${envKey(recipe)} (for ${pack.id}@${pack.version}): installing in the background`);
-  task.promise = installEnvironment({ recipe, packDir: pack.dir, root: envsDir(home), cacheDir: path.join(envsDir(home), ".cache"), signal: abort.signal, hooks, log: (m) => log(`environment ${envKey(recipe)}: ${m}`) }).then(
-    (r) => {
-      task.result = r.ok ? { ok: true } : { ok: false, reason: r.reason };
-    },
-    (err: unknown) => {
-      task.result = { ok: false, reason: err instanceof Error ? err.message : String(err) };
-    },
-  );
+  const signal = AbortSignal.any([abort.signal, AbortSignal.timeout(ENV_LIMITS.installMaxMs)]);
+  task.promise = installEnvironment({ recipe, packDir: packCopy, root: envsDir(home), cacheDir: path.join(envsDir(home), ".cache"), signal, hooks, log: (m) => log(`environment ${envKey(recipe)}: ${m}`) })
+    .then(
+      (r) => {
+        task.result = r.ok ? { ok: true } : { ok: false, reason: signal.aborted && !abort.signal.aborted ? `the install took longer than ${ENV_LIMITS.installMaxMs / 60_000} min and was stopped (${r.reason})` : r.reason };
+      },
+      (err: unknown) => {
+        task.result = { ok: false, reason: err instanceof Error ? err.message : String(err) };
+      },
+    )
+    .finally(() => rm(packCopy, { recursive: true, force: true }).catch(() => {}));
   return task;
+}
+
+/** Stops a running install on purpose (shutdown, a new bundle): its folder is removed and it is due again at once. */
+export async function abandonEnvTask(task: EnvTask, home: string): Promise<void> {
+  task.abort.abort();
+  await task.promise;
+  await writeEnvState(home, stopEnvAttempt(await readEnvState(home), task.recipe, Date.now()));
 }
 
 /** Between jobs: records a finished install, reports a failure to the portal, and removes environments nothing uses. */
@@ -6729,7 +6837,7 @@ export type UpdateCheckOutcome = { restart: boolean; bundle?: { file: UpdateMani
  * One update check, between jobs. Returns restart: true once a verified, self-tested new worker file is in place.
  * Verification failures are reported to the portal; network trouble is only logged and tried again later.
  */
-export async function checkForUpdate(client: PortalClient, cfg: WorkerConfig, home: string): Promise<UpdateCheckOutcome> {
+export async function checkForUpdate(client: PortalClient, cfg: WorkerConfig, home: string, hooks: { beforeEnvPacks?: () => Promise<void> } = {}): Promise<UpdateCheckOutcome> {
   const p = updatePaths(home);
   const key = cfg.updateKey as string;
   const ownSha = await sha256File(p.live);
@@ -6826,6 +6934,7 @@ export async function checkForUpdate(client: PortalClient, cfg: WorkerConfig, ho
     try {
       const body = await client.installFile(file.name, file.bytes);
       verifyUpdateBytes(file, body);
+      await hooks.beforeEnvPacks?.();
       const bundle = await installEnvPacks(home, body);
       packsInstalled = true;
       const list = bundle.packs.map((p) => `${p.id}@${p.version}`).join(", ") || "none";
@@ -7093,7 +7202,8 @@ export async function loop(opts: {
   const refreshEnvironments = async () => {
     try {
       const { packs } = await installedEnvPacks(opts.home);
-      environments = envReports(neededEnvironments(packs), await readEnvState(opts.home));
+      const state = await readEnvState(opts.home);
+      environments = envReports(neededEnvironments(packs), state, envPlatform(), await readyEnvironments(opts.home, packs, state));
     } catch (err) {
       log(`environments: ${(err as Error).message}`);
     }
@@ -7143,7 +7253,16 @@ export async function loop(opts: {
       if (Date.now() >= nextUpdateCheck) {
         nextUpdateCheck = Date.now() + checkEveryMs;
         try {
-          const outcome = await checkForUpdate(client, cfg, opts.home);
+          const outcome = await checkForUpdate(client, cfg, opts.home, {
+            // A new env-packs.json may replace the pack an install reads: that install stops first and starts again.
+            beforeEnvPacks: async () => {
+              if (envTask && !envTask.result) {
+                log(`environment ${envKey(envTask.recipe)}: stopped for the new env packs; it starts again`);
+                await abandonEnvTask(envTask, opts.home);
+                envTask = null;
+              }
+            },
+          });
           if (outcome.restart) {
             restart = true;
             break;
@@ -7210,10 +7329,24 @@ export async function loop(opts: {
       }
       if (!res) {
         if (opts.mode === "tick") {
-          // A one-shot tick finishes a running environment install and reports it before it exits.
-          if (envTask && !stopping) {
-            await envTask.promise;
-            continue;
+          // A one-shot tick finishes a running environment install and reports it before it exits, within its time
+          // budget and unless it is told to stop; otherwise the install stops and starts again on the next run.
+          if (envTask && !envTask.result && !stopping && timeLeft() > 0) {
+            const task: EnvTask = envTask;
+            await new Promise<void>((resolve) => {
+              const timer = setInterval(() => {
+                if (stopping || timeLeft() <= 0) {
+                  clearInterval(timer);
+                  resolve();
+                }
+              }, 1000);
+              void task.promise.then(() => {
+                clearInterval(timer);
+                resolve();
+              });
+            });
+            if (task.result) continue;
+            log(`environment ${envKey(task.recipe)} is still installing at the end of this tick; it starts again on the next run`);
           }
           log(ran === 0 ? "queue empty" : `queue empty after ${ran} job(s)`);
           break;
@@ -7238,8 +7371,7 @@ export async function loop(opts: {
     if (envTask) {
       if (!envTask.result) {
         // Stopped mid-install: the half-installed folder is removed and the install starts again on the next run.
-        envTask.abort.abort();
-        await envTask.promise;
+        await abandonEnvTask(envTask, opts.home).catch((err) => log(`environment: ${(err as Error).message}`));
       } else {
         await finishEnvTask(envTask, opts.home).catch((err) => log(`environment: ${(err as Error).message}`));
       }
@@ -7401,7 +7533,8 @@ export async function main(argv: string[]) {
       return;
     }
     case "install-env-packs": {
-      // Used by install.sh: the packs with an environment; their environments install on the next run, between jobs.
+      // Manual installs and tests (install.sh leaves env packs to the first signed update check): the packs with an
+      // environment; their environments install on the next run, between jobs.
       if (!flags.file) throw new Error("install-env-packs needs --file <env-packs.json>");
       const b = await installEnvPacks(home, await readFile(flags.file));
       log(`installed env packs: ${b.packs.map((p) => `${p.id}@${p.version}`).join(", ") || "none"} into ${envPacksDir(home)}`);

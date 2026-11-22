@@ -241,9 +241,12 @@ and `{workDir}` (the render's own scratch folder, also its cwd).
 
 - Enforced: the recipe's shape (the worker parses it again with its own reader and refuses what this validator
   refuses); https and the host list on every hop; sha256 and size on every download (a cached file is hashed again);
+  a deadline on every download (at least 10 minutes, or 100 KB/s) and on the whole install (90 minutes);
   archives checked before anything is written (no absolute path, no `..`, no hard links, devices or fifos, no symlink
-  pointing outside the environment, nothing written through a symlink, setuid and group/other write bits dropped,
-  at most 1 GB and 100,000 entries); npm with `--ignore-scripts` and the lockfile's integrity; pip with
+  pointing outside the environment, setuid and group/other write bits dropped, at most 1 GB and 100,000 entries;
+  archives are held in memory, so a recipe's largest archive costs up to about 1.5 GB of RAM while it unpacks), and
+  after each step every symlink is resolved by the kernel and must stay inside the environment; no write (an archive
+  entry, an `extract: none` file, an npm or pip folder) goes through a symlink already on its path; npm with `--ignore-scripts` and the lockfile's integrity; pip with
   `--require-hashes` and wheels only; never as root; a disk check before the install (three times the downloads plus
   room for npm or pip, 1 GB kept free, `VENSTUDIO_ENV_BUDGET_GB` caps all environments, default 10); the probe before
   any capability; the render's minimal environment (no worker token, no portal URL, `HOME` and `TMPDIR` in its scratch
@@ -255,8 +258,14 @@ and `{workDir}` (the render's own scratch folder, also its cwd).
   variable points at a loopback listener that refuses and records each request, and any recorded request fails the
   job by name; a tool that ignores proxy variables and connects directly is then not stopped by the worker (on Muse
   the VM's only way out is its egress proxy). The job result says which applied (`network`).
-- Trusted: the code of the pack and of the tools the recipe installs. Review, this repo's CI and the owner's merge are
-  the gate for that code; the worker does not sandbox it beyond the above.
+- Trusted: the code of the pack and of the tools the recipe installs. The probe and the render run as the worker's own
+  user with the same view of the filesystem, so they could read the worker's files (its token in `config.json`
+  included) and write where that user may; the worker does not sandbox them beyond the above. That is why review,
+  this repo's CI and the owner's merge are the gate for that code.
+- Retries: a failed install is tried again after 5 minutes, doubling up to 6 hours. An install a crash cut short counts
+  as a failed attempt (so a crash does not loop); one stopped on purpose (shutdown, a new bundle) starts again at once.
+  An environment that is ready but stops passing its probe, or whose folder is gone, is reported as failed and
+  installed again.
 
 ## Engine command
 
