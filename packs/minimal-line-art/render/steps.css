@@ -1,0 +1,62 @@
+/* Colours, face and sizes from the `minimalistic-graphics` skill of github.com/artemnovitckii/claude-animation-skills (MIT, see LICENSE). */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+html,
+body,
+#stage {
+  overflow: hidden;
+  background: #000;
+}
+#stage {
+  position: relative;
+}
+#root {
+  --fg: #f4f4f4;
+  --soft: #bdbdbd;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1080px;
+  height: 1920px;
+  background: #000;
+  transform-origin: 0 0;
+}
+.scene {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.bars,
+.orbit,
+.pulse {
+  stroke: var(--fg);
+}
+.ring {
+  stroke: var(--soft);
+}
+.sparks,
+.ball {
+  fill: var(--fg);
+}
+/* The one quiet line: lowercase, regular weight, no emphasis (the skill's taste rules). */
+.cap {
+  position: absolute;
+  left: 100px;
+  width: 880px;
+  top: 236px;
+  text-align: center;
+  font: 400 44px/1.2 "Poppins", "DejaVu Sans", sans-serif;
+  color: var(--fg);
+  letter-spacing: -0.005em;
+  text-transform: lowercase;
+  max-height: 160px;
+  overflow: hidden;
+}
