@@ -3497,7 +3497,7 @@ export function runFixed(argv: readonly string[], o: { cwd: string; env: Record<
     };
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(full[0], full.slice(1), { cwd: o.cwd, env: o.env, stdio: ["ignore", "pipe", "pipe"], detached: true });
+      child = spawn(full[0], full.slice(1), { cwd: o.cwd, env: o.env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"], detached: true });
     } catch (err) {
       resolve({ code: null, signal: null, timedOut: false, output: `could not start ${full[0]}: ${(err as Error).message}` });
       return;
@@ -3918,9 +3918,11 @@ export async function installEnvironment(o: { recipe: EnvRecipe; packDir: string
           checkNpmLock(lockText, r.hosts);
           await writeFile(path.join(dir, "package-lock.json"), lockText);
           await copyFile(path.join(o.packDir, path.dirname(s.lockfile), "package.json"), path.join(dir, "package.json"));
+          // Separate empty user and global configs: npm refuses one file loaded as both ("double-loading config").
           const rc = path.join(scratch, "npmrc");
           await writeFile(rc, "");
-          const env = { ...toolEnv, npm_config_userconfig: rc, npm_config_globalconfig: rc, npm_config_cache: path.join(o.cacheDir ?? scratch, "npm"), npm_config_update_notifier: "false", npm_config_fund: "false", npm_config_audit: "false" };
+          await writeFile(`${rc}-global`, "");
+          const env = { ...toolEnv, npm_config_userconfig: rc, npm_config_globalconfig: `${rc}-global`, npm_config_cache: path.join(o.cacheDir ?? scratch, "npm"), npm_config_update_notifier: "false", npm_config_fund: "false", npm_config_audit: "false" };
           say(`npm ci --omit=dev --ignore-scripts in ${s.to}`);
           const got = await run([npmPath(), "ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: dir, env, timeoutMs: ENV_LIMITS.npmTimeoutMs, signal: o.signal });
           if (got.code !== 0) throw new EnvInstallError(failText("npm ci", got));
