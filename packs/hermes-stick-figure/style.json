@@ -3,7 +3,7 @@
   "id": "hermes-stick-figure",
   "name": "Stick-figure explainer reel (Hermes /stick-figure)",
   "description": "A bright cartoon world with stick people, constant camera motion, whip transitions and 1 to 2 word captions timed to the voice. A full reel Hermes makes with /stick-figure.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "status": "trial",
   "family": "animation-2d",
   "formats": {
@@ -137,7 +137,14 @@
   "hermes": {
     "skill": "/stick-figure",
     "mode": "project",
-    "input": "A full project, not a quick spec. Use the run's narration (narration.url) as the voiceover and time the skill's captions and shots to it word by word where possible; the run's captions are the text to show. Do not record or synthesise a new voice unless the narration is missing, and say so in the reply's notes if you had to. Use the storyboard's shots as the shot list (about 10 to 12 setups, most 2 to 4 s, the explainer shot longer; the hook in action on frame 1; faces and key props out of the caption band) and the run's script order (hook, belief, the \"But\" turn, examples, payoff). Keep the skill's style rules.",
-    "output": "A finished reel (1080x1920 H.264 MP4, 30 fps) with the run's narration and the skill's captions and sound, published under /clip/ on the media host. It is a reel the studio then QCs (qc-video) and the owner scores on Review; it is never published."
+    "voice": "skill",
+    "input": "A full project, not a quick spec. The run's skill brief (brief.text) is the project brief Hermes wrote from the approved script: the voiceover text (the run's approved narration script, one sentence per entry for script.json), the shot list (about 10 to 12 setups, most 2 to 4 s, the explainer shot longer; the hook in action on frame 1; faces and key props out of the caption band) and the script order (hook, belief, the \"But\" turn, examples, payoff). The run has no voice stage: record the voiceover from that narration text with the skill's own Kokoro voice tool (engine/tools/tts_kokoro.py), then align.py for the word times, and time the shots, captions and sound to it as the skill does. Name the voice backend you used in the reply's voice field. Keep the skill's style rules.",
+    "output": "A finished reel (1080x1920 H.264 MP4, 30 fps) with the voice the skill recorded from the run's narration script and the skill's captions and sound, published under /clip/ on the media host. It is a reel the studio then QCs (qc-video) and the owner scores on Review; it is never published."
+  },
+  "workflow": {
+    "recipe": "hermes-skill",
+    "review": [
+      "skill-brief"
+    ]
   }
 }

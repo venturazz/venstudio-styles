@@ -34,9 +34,13 @@ Taste rules the skill sets, which the studio passes on:
 
 `hermes.input` in `style.json`, sent to Hermes with every render request:
 
-> One clip per storyboard shot, in shot order. For each shot, write the skill's JSON spec from the shot's onScreenText (else its description) and the run's topic, following the skill's spec and taste rules (lines (a build line under about 17 characters and a one-word payoff under about 9)); never invent data the storyboard does not give. Render each spec with the skill, fit each clip to the shot's seconds (hold the last frame when the shot is longer, play it faster when shorter), cut them together, add the run's narration as the audio and burn the run's captions in the caption band. The shot pictures are not needed by this skill; ignore them.
+> The run's skill brief gives one shot per clip, in order, each with its seconds and the skill's JSON spec (brief.shots[i].spec), written by Hermes from the approved script and the research notes following the skill's spec and taste rules (lines (a build line under about 17 characters and a one-word payoff under about 9)); never invent data the script and notes do not give. Render each spec with the skill, fit each clip to the shot's seconds (hold the last frame when the shot is longer, play it faster when shorter), cut them together, add the run's narration as the audio and burn the run's captions in the caption band. No pictures are made for this workflow.
 
 What Hermes hands back (`hermes.output`): One 1080x1920 H.264 MP4 at 30 fps with the narration, published under /clip/ on the media host. The studio then runs qc-video and the owner scores it on Review.
+
+## Workflow
+
+`hermes-skill` (style.json `workflow`, with `review: ["skill-brief"]`, so the owner always checks the brief, `hermes.voice: "run"`): idea → research → script → skill brief → voice → render (Hermes, research only) → quality check. Hermes turns the approved script into the input `/minecraft` expects (`hermes.input` above), checked by the portal before anything renders; the Hermes render request carries that brief. No pictures are generated. The run's voice stage records the narration and the skill uses it as the audio. Version 0.2.0 adds the workflow and rewrites `hermes.input` for the brief.
 
 ## Fixture
 
@@ -52,7 +56,7 @@ never rendered in CI: there is no Hermes there.
 
 ## Status
 
-`trial` (0.1.0), the highest status a `hermes` pack may have. Its evidence is a `research-source` entry in `curation`
+`trial` (0.2.0), the highest status a `hermes` pack may have. Its evidence is a `research-source` entry in `curation`
 (the pinned skill and the owner's report that it works in Hermes); there is no CI render for a hermes pack and none is
 claimed. Every run is a research trial: recorded on the portal's Styles page with its QC result, the owner's
 presentation score and decision, never published.

@@ -3,7 +3,7 @@
   "id": "explainer-flat-vector",
   "name": "Flat-vector explainer",
   "description": "A calm narrator over flat illustrated scenes that build one argument step by step.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "status": "trial",
   "family": "explainer",
   "formats": {
@@ -177,5 +177,8 @@
       "result": "pass",
       "notes": "1080x1920, 24 s, G-technical passed. The render this pack starts from; it moved into the pack unchanged."
     }
-  ]
+  ],
+  "workflow": {
+    "recipe": "image-sequence"
+  }
 }

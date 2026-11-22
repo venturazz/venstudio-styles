@@ -603,11 +603,18 @@
           ],
           "description": "spec: a quick skill from a small JSON spec; project: a full project with its own voice and caption timing (input must say how the run's narration is used)."
         },
+        "voice": {
+          "enum": [
+            "run",
+            "skill"
+          ],
+          "description": "hermes-skill recipe: run (default) when the run's voice stage records the narration the skill uses; skill when the skill makes its own voice and timing (mode project only; the run then has no voice stage and the provenance records Hermes's voice backend)."
+        },
         "input": {
           "type": "string",
           "minLength": 1,
           "maxLength": 2000,
-          "description": "How the storyboard, brief, narration and captions map to the skill's input."
+          "description": "How the run's skill brief (written by Hermes from the approved script), narration and captions map to the skill's input."
         },
         "output": {
           "type": "string",
@@ -623,6 +630,89 @@
             "pattern": "^[a-z0-9][a-z0-9-]{1,62}$"
           },
           "description": "Packs (in this repo) this pack is the Hermes research variant of."
+        }
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recipe"
+      ],
+      "description": "The workflow a run of this pack goes through (FORMAT.md, Workflows). Optional: without it the recipe is inferred from the engine and asset model.",
+      "properties": {
+        "recipe": {
+          "enum": [
+            "image-sequence",
+            "scene-spec",
+            "hermes-skill",
+            "html-design",
+            "engine-project",
+            "clip-sequence"
+          ],
+          "description": "The recipe. engine-project and clip-sequence are reserved names the validator refuses until they are built; html-design is research only (html-capture, at most trial, review must name html-design and preview)."
+        },
+        "review": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "idea",
+              "research",
+              "script",
+              "storyboard",
+              "scene-spec",
+              "skill-brief",
+              "html-design",
+              "preview",
+              "assets",
+              "voice",
+              "render",
+              "qc"
+            ]
+          },
+          "description": "Stages of this pack's workflow where the owner always reviews, whatever the autonomy level."
+        }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brief",
+        "palette",
+        "typography",
+        "layout"
+      ],
+      "description": "html-design packs only (and required there): the brief Hermes designs each page from.",
+      "properties": {
+        "brief": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "What the page is for and how it moves."
+        },
+        "palette": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          },
+          "description": "Colours, #RRGGBB."
+        },
+        "typography": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600,
+          "description": "The type to use: the pack's vendored fonts or the run's font."
+        },
+        "layout": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "Safe areas and layout rules (captions are burned below them)."
         }
       }
     }

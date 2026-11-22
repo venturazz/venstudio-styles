@@ -24,6 +24,10 @@ The `portal` block of `style.json` holds the values the VenStudio portal used fo
 (catalog, seed template and render parameters). venstudio's tests check they still match, so migrating the style
 into a pack changed nothing about how it is planned or rendered.
 
+## Workflow
+
+`image-sequence` (style.json `workflow`): idea → research → script → storyboard (an image prompt per shot) → assets (a picture per shot) → voice → render → quality check. This is the studio's original pipeline; runs of this pack behave exactly as before workflows existed. Version 1.0.1 only adds the `workflow` field.
+
 ## Fixture
 
 `fixtures/payload.json` is a render-video payload for this look; `fixtures/expect.json` says what the render must

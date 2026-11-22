@@ -3,7 +3,7 @@
   "id": "documentary-stills",
   "name": "Narrated documentary with stills",
   "description": "Narration over stills with slow camera moves and a clear timeline.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "status": "trial",
   "family": "documentary",
   "formats": {
@@ -145,5 +145,8 @@
       "result": "pass",
       "notes": "The stills engine this pack's parameters drive. The pack's own fixture is rendered by the styles repo CI."
     }
-  ]
+  ],
+  "workflow": {
+    "recipe": "image-sequence"
+  }
 }
