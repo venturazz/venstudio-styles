@@ -144,6 +144,9 @@
     "output": "A finished reel (1080x1920 H.264 MP4, 30 fps) with the voice the skill recorded from the run's narration script and the skill's captions and sound, published under /clip/ on the media host. It is a reel the studio then QCs (qc-video) and the owner scores on Review; it is never published."
   },
   "workflow": {
-    "recipe": "hermes-skill"
+    "recipe": "hermes-skill",
+    "review": [
+      "skill-brief"
+    ]
   }
 }

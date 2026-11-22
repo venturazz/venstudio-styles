@@ -114,6 +114,9 @@
     }
   ],
   "workflow": {
-    "recipe": "hermes-skill"
+    "recipe": "hermes-skill",
+    "review": [
+      "skill-brief"
+    ]
   }
 }

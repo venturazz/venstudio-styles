@@ -339,6 +339,8 @@ test("workflow: every pack names its recipe; stills and the explainer are image-
   assert.deepEqual(V.workflowStages(load("documentary-stills")), ["idea", "research", "script", "storyboard", "assets", "voice", "render", "qc"]);
   assert.deepEqual(V.workflowStages(load("animated-line-graph")), ["idea", "research", "script", "scene-spec", "voice", "render", "qc"]);
   assert.deepEqual(load("animated-line-graph").workflow.review, ["scene-spec"]);
+  // The owner checks the plan of a run without pictures every time: the scene spec, or the skill brief.
+  for (const { id } of packs) if (id.startsWith("hermes-")) assert.deepEqual(load(id).workflow.review, ["skill-brief"], id);
 });
 
 test("workflow rules: a known, built recipe that fits the engine; review names stages of the pack's own list", () => {

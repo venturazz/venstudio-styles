@@ -40,7 +40,7 @@ What Hermes hands back (`hermes.output`): A finished reel (1080x1920 H.264 MP4, 
 
 ## Workflow
 
-`hermes-skill` (style.json `workflow`, `hermes.voice: "skill"`): idea → research → script → skill brief → render (Hermes, research only) → quality check. Hermes turns the approved script into the input `/zach-d-films` expects (`hermes.input` above), checked by the portal before anything renders; the Hermes render request carries that brief. No pictures are generated. The skill makes its own voice and timing, so the run has no voice stage: the narration script goes to the skill as text, and the video's provenance records the voice backend Hermes names; that backend's provider terms are checked like any voice. Version 0.2.0 adds the workflow and rewrites `hermes.input` for the brief.
+`hermes-skill` (style.json `workflow`, with `review: ["skill-brief"]`, so the owner always checks the brief, `hermes.voice: "skill"`): idea → research → script → skill brief → render (Hermes, research only) → quality check. Hermes turns the approved script into the input `/zach-d-films` expects (`hermes.input` above), checked by the portal before anything renders; the Hermes render request carries that brief. No pictures are generated. The skill makes its own voice and timing, so the run has no voice stage: the narration script goes to the skill as text, and the video's provenance records the voice backend Hermes names; that backend's provider terms are checked like any voice. Version 0.2.0 adds the workflow and rewrites `hermes.input` for the brief.
 
 ## Fixture
 

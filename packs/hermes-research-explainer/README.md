@@ -27,7 +27,7 @@ No worker runs this engine: the portal asks Hermes directly (through its Hermes 
 
 ## Workflow
 
-`hermes-skill` (style.json `workflow`): idea → research → script → skill brief → voice → render (Hermes, research only) → quality check. Hermes turns the approved script into a text brief for its own tools (shot list, on-screen text, timing), checked by the portal before anything renders; the Hermes render request carries that brief. No pictures are generated. The run's voice stage records the narration and the skill uses it as the audio. Version 0.2.0 adds the workflow and rewrites `hermes.input` for the brief.
+`hermes-skill` (style.json `workflow`, with `review: ["skill-brief"]`, so the owner always checks the brief): idea → research → script → skill brief → voice → render (Hermes, research only) → quality check. Hermes turns the approved script into a text brief for its own tools (shot list, on-screen text, timing), checked by the portal before anything renders; the Hermes render request carries that brief. No pictures are generated. The run's voice stage records the narration and the skill uses it as the audio. Version 0.2.0 adds the workflow; its runs no longer make pictures (the description says so too).
 
 ## Fixture
 
