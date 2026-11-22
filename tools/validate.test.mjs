@@ -37,6 +37,7 @@ test("every pack in this repo is valid", () => {
     "explainer-flat-vector",
     "hermes-breakdown",
     "hermes-dan-koe",
+    "hermes-designed-explainer",
     "hermes-graph",
     "hermes-kurzgesagt",
     "hermes-low-poly",
@@ -117,9 +118,9 @@ test("research-source: accepted for a hermes pack at lab or trial, required ther
   const html = load("animated-line-graph");
   const asHtml = { ...clone(html), status: "trial", curation: [RESEARCH] };
   assert.ok(has(V.validateStyle(asHtml), /needs a passing ci-render entry/), "html-capture at trial with only research-source");
-  assert.ok(has(V.validateStyle(asHtml), /research-source is evidence for hermes packs only/));
-  assert.ok(has(V.validateStyle({ ...clone(load("documentary-stills")), curation: [...load("documentary-stills").curation, RESEARCH] }), /research-source is evidence for hermes packs only/), "even beside a real ci-render");
-  assert.ok(has(V.validateStyle({ ...clone(html), status: "draft", curation: [RESEARCH] }), /research-source is evidence for hermes packs only/), "even on a draft");
+  assert.ok(has(V.validateStyle(asHtml), /research-source is evidence for hermes packs \(and html-design packs\) only/));
+  assert.ok(has(V.validateStyle({ ...clone(load("documentary-stills")), curation: [...load("documentary-stills").curation, RESEARCH] }), /research-source is evidence for hermes packs \(and html-design packs\) only/), "even beside a real ci-render");
+  assert.ok(has(V.validateStyle({ ...clone(html), status: "draft", curation: [RESEARCH] }), /research-source is evidence for hermes packs \(and html-design packs\) only/), "even on a draft");
 });
 
 test("the hermes block: only on hermes packs, a skill name, a mode, how the plan maps to the input; project skills say how the narration is used", (t) => {
@@ -325,6 +326,12 @@ test("workflow: every pack names its recipe; stills and the explainer are image-
   const { packs } = V.validateRepo(ROOT);
   for (const { id } of packs) {
     const s = load(id);
+    if (id === "hermes-designed-explainer") {
+      // html-design is never inferred: a pack runs Hermes-written pages only when it says so.
+      assert.equal(s.workflow?.recipe, "html-design", id);
+      assert.equal(V.recipeOf({ ...clone(s), workflow: undefined }), "scene-spec", `${id} without workflow would be a plain scene-spec page`);
+      continue;
+    }
     const want = id.startsWith("hermes-") ? "hermes-skill" : expected[id];
     assert.equal(s.workflow?.recipe, want, id);
     // The recipe a pack names is the one its engine and asset model imply, so inference agrees for these packs.
@@ -337,10 +344,12 @@ test("workflow: every pack names its recipe; stills and the explainer are image-
     assert.deepEqual(V.workflowStages(load(id)), voice === "skill" ? ["idea", "research", "script", "skill-brief", "render", "qc"] : ["idea", "research", "script", "skill-brief", "voice", "render", "qc"], id);
   }
   assert.deepEqual(V.workflowStages(load("documentary-stills")), ["idea", "research", "script", "storyboard", "assets", "voice", "render", "qc"]);
-  assert.deepEqual(V.workflowStages(load("animated-line-graph")), ["idea", "research", "script", "scene-spec", "voice", "render", "qc"]);
+  // scene-spec runs see still frames of the page (the preview stage) before the voice and the render.
+  assert.deepEqual(V.workflowStages(load("animated-line-graph")), ["idea", "research", "script", "scene-spec", "preview", "voice", "render", "qc"]);
   assert.deepEqual(load("animated-line-graph").workflow.review, ["scene-spec"]);
-  // The owner checks the plan of a run without pictures every time: the scene spec, or the skill brief.
-  for (const { id } of packs) if (id.startsWith("hermes-")) assert.deepEqual(load(id).workflow.review, ["skill-brief"], id);
+  assert.deepEqual(V.workflowStages(load("hermes-designed-explainer")), ["idea", "research", "script", "html-design", "preview", "voice", "render", "qc"]);
+  // The owner checks the plan of a run without pictures every time: the scene spec, the skill brief, or the page and its stills.
+  for (const { id } of packs) if (id.startsWith("hermes-")) assert.deepEqual(load(id).workflow.review, id === "hermes-designed-explainer" ? ["html-design", "preview"] : ["skill-brief"], id);
 });
 
 test("workflow rules: a known, built recipe that fits the engine; review names stages of the pack's own list", () => {
@@ -351,10 +360,10 @@ test("workflow rules: a known, built recipe that fits the engine; review names s
   const project = load("hermes-stick-figure");
   const w = (s, workflow) => ({ ...clone(s), workflow });
   assert.ok(has(V.validateStyle(w(stills, { recipe: "slideshow" })), /workflow.recipe must be one of image-sequence, scene-spec, hermes-skill, html-design, engine-project, clip-sequence/));
-  for (const reserved of ["html-design", "engine-project", "clip-sequence"]) {
+  for (const reserved of ["engine-project", "clip-sequence"]) {
     assert.ok(has(V.validateStyle(w(graph, { recipe: reserved })), new RegExp(`workflow.recipe ${reserved} is a reserved name: it is not built yet`)), reserved);
   }
-  assert.ok(has(V.validateStyle(w(graph, { recipe: "html-design" })), /owner's explicit approval/));
+  assert.ok(!has(V.validateStyle(w(graph, { recipe: "html-design", review: ["html-design", "preview"] })), /reserved name/), "html-design is built (owner decision)");
   // scene-spec needs a page that draws the spec: html-capture, or remotion-2d that animates elements.
   assert.ok(has(V.validateStyle(w(stills, { recipe: "scene-spec" })), /scene-spec needs engine html-capture, or remotion-2d with contract.onScreen.elementAnimation true.*; this pack renders with ffmpeg-stills/));
   assert.deepEqual(V.validateStyle(w(explainer, { recipe: "scene-spec" })), [], "remotion-2d with element animation may use scene-spec");
@@ -389,5 +398,47 @@ test("workflow rules: a known, built recipe that fits the engine; review names s
   for (const id of V.RECIPE_IDS) {
     for (const k of V.RECIPES[id].stages) assert.ok(V.STAGE_KINDS.includes(k) || (!V.RECIPES[id].implemented && V.RESERVED_STAGE_KINDS.includes(k)), `${id}: ${k}`);
   }
-  assert.deepEqual(V.IMPLEMENTED_RECIPES, ["image-sequence", "scene-spec", "hermes-skill"]);
+  assert.deepEqual(V.IMPLEMENTED_RECIPES, ["image-sequence", "scene-spec", "hermes-skill", "html-design"]);
+});
+
+test("html-design: research only, html-capture only, at most trial, the owner reviews the page and its stills, a design brief, research-source or a real ci-render", (t) => {
+  const d = load("hermes-designed-explainer");
+  assert.deepEqual(V.validateStyle(d, { dirName: "hermes-designed-explainer" }), []);
+  assert.deepEqual(V.validateRepo(scratch(t, ["hermes-designed-explainer"])).issues, []);
+  assert.deepEqual([d.status, d.renderer.engine, d.renderer.drawsCaptions, d.renderer.minWorkerVersion], ["trial", "html-capture", false, "0.11.0"]);
+  // Never above trial, whatever the evidence.
+  for (const status of ["proven", "listed"]) {
+    const curation = [...d.curation, { date: "2026-11-22", kind: "owner-review", ref: "PR", result: "approved", notes: "" }, { date: "2026-11-22", kind: "trial-run", ref: "run", result: "pass", notes: "" }];
+    assert.ok(has(V.validateStyle({ ...clone(d), status, curation }), /workflow.recipe html-design is research only \(owner decision: Hermes writes the page\): the pack can be at most trial, never/), status);
+  }
+  // html-capture only.
+  for (const engine of ["remotion-2d", "ffmpeg-stills", "hermes"]) {
+    const s = clone(d);
+    s.renderer = { engine, minWorkerVersion: "0.11.0", composition: engine === "remotion-2d" ? "x-y" : null };
+    assert.ok(has(V.validateStyle(s), /workflow.recipe html-design needs engine html-capture/), engine);
+  }
+  // The owner reviews the page and the stills every time.
+  assert.ok(has(V.validateStyle({ ...clone(d), workflow: { recipe: "html-design" } }), /must name html-design and preview.*missing html-design, preview/));
+  assert.ok(has(V.validateStyle({ ...clone(d), workflow: { recipe: "html-design", review: ["html-design"] } }), /missing preview/));
+  // Evidence: research-source or a real ci-render; neither is refused, nothing is not enough.
+  assert.ok(has(V.validateStyle({ ...clone(d), curation: [] }), /html-design pack needs a research-source entry .* or a real ci-render entry/));
+  assert.deepEqual(V.validateStyle({ ...clone(d), curation: [{ date: "2026-11-22", kind: "ci-render", ref: "venstudio-styles CI run 1", result: "pass", notes: "" }] }), []);
+  assert.deepEqual(V.validateStyle({ ...clone(d), status: "draft", curation: [] }), [], "a draft needs no evidence");
+  // The design block: required for html-design, only for html-design, checked.
+  const noDesign = clone(d);
+  delete noDesign.design;
+  assert.ok(has(V.validateStyle(noDesign), /an html-design pack needs a design block/));
+  assert.ok(has(V.validateStyle({ ...clone(load("probe-line-graph")), design: clone(d.design) }), /design is the brief Hermes designs each page from; it is only for workflow.recipe html-design/));
+  assert.ok(has(V.validateStyle({ ...clone(d), design: { ...d.design, palette: ["red", "#fff"] } }), /design.palette must be 2 to 12 colours/));
+  assert.ok(has(V.validateStyle({ ...clone(d), design: { ...d.design, brief: "" } }), /design.brief must say/));
+  assert.ok(has(V.validateStyle({ ...clone(d), design: { ...d.design, gsap: true } }), /design: unknown field "gsap"/));
+  // GSAP is not vendored into an html-design pack until the owner approves its licence.
+  const gsap = scratch(t, ["hermes-designed-explainer"], { "hermes-designed-explainer": { dir: "hde" } });
+  const vendor = path.join(gsap, "packs", "hde", "render", "vendor", "gsap");
+  mkdirSync(vendor, { recursive: true });
+  writeFileSync(path.join(vendor, "gsap.min.js"), "/* gsap */");
+  writeFileSync(path.join(vendor, "LICENSE"), "Standard No-Charge License");
+  assert.ok(has(V.validateRepo(gsap).issues, /GSAP is not available to html-design pages until the owner approves its licence/));
+  // research-source still never stands in for other packs' CI render.
+  assert.ok(has(V.validateStyle({ ...clone(load("probe-line-graph")), curation: [{ date: "2026-11-22", kind: "research-source", ref: "x", result: "pass", notes: "" }] }), /research-source is evidence for hermes packs \(and html-design packs\) only/));
 });

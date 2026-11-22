@@ -47,7 +47,7 @@ import type {
 } from "../../packages/protocol/src/index.ts";
 import type { TemplateProps } from "../render-remotion/src/props.ts";
 
-export const VERSION = "0.10.0";
+export const VERSION = "0.11.0";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -295,6 +295,9 @@ export async function detectCapabilities(home?: string): Promise<Capability[]> {
     // html-capture (0.10.0) uses the Chromium that project installed. Reported only after its 1-second probe page
     // rendered here (and its one network request was blocked), once per process.
     if (!(await htmlCaptureUnavailableReason(remotionDir(home)))) caps.push("html-capture");
+    // preview-frames (0.11.0): still frames of a page. Reported only after a still of the probe page came back here,
+    // so the portal queues a preview only for a worker whose code and browser have both shown they take one.
+    if (caps.includes("html-capture") && !(await previewFramesUnavailableReason(remotionDir(home)))) caps.push("preview-frames");
   }
   const kokoro = process.env.KOKORO_URL;
   if (kokoro) {
@@ -835,6 +838,7 @@ export const handlers: Record<string, Handler> = {
   },
 
   "render-video": renderVideoHandler,
+  "preview-frames": previewFramesHandler,
   "fetch-asset": fetchAssetHandler,
   tts: ttsHandler,
   "agent-task": agentTaskHandler,
@@ -1084,6 +1088,11 @@ export interface RenderSpec {
   captionStyle?: RenderCaptionStyle;
   /** The audio layers to mix (0.7.0+). Absent: the narration alone, exactly as in 0.6.0. */
   audio?: RenderAudio;
+  /**
+   * html-design (0.11.0+): the page Hermes wrote for this run, uploaded as a job input (a page bundle, parsePageBundle).
+   * Only with engine html-capture and an installed pack marked designed. Absent for every other payload.
+   */
+  page?: { assetId: string };
 }
 
 /** Mirror of `CaptionSpec` in apps/portal/lib/studio/caption-spec.ts, already scaled to the frame. */
@@ -1571,6 +1580,14 @@ export function parseRenderSpec(payload: Record<string, unknown>): RenderSpec {
   const fontAssetId = payloadFont ?? captionStyle?.fontAssetId ?? null;
   const audio = payload.audio === undefined || payload.audio === null ? null : parseAudioPlan(payload.audio, { durationSec, targetLufs, inputs });
   const engine = renderEngineOf(payload);
+  let page: { assetId: string } | null = null;
+  if (payload.page !== undefined && payload.page !== null) {
+    const pg = (isRecord(payload.page) ? payload.page : {}) as Record<string, unknown>;
+    if (typeof pg.assetId !== "string" || !UUID_RE.test(pg.assetId)) bad("page must name the page asset");
+    if (!inputs.includes(pg.assetId as string)) bad("the page asset is not listed in inputs");
+    if (engine !== "html-capture") bad(`a page uploaded with the job is only for engine html-capture, not "${engine}"`);
+    page = { assetId: pg.assetId as string };
+  }
   // Only an animating engine reads the scene plan; the stills engine has everything it needs in the shots.
   const scenePlan = engine === "ffmpeg-stills" ? null : parseScenePlan(payload.scenePlan, { engine, width, height, fps, shotRefs: shots.map((s) => s.shotRef) });
   return {
@@ -1593,6 +1610,7 @@ export function parseRenderSpec(payload: Record<string, unknown>): RenderSpec {
     // Only when sent, so a payload without them parses to exactly the 0.6.0 spec.
     ...(captionStyle ? { captionStyle } : {}),
     ...(audio ? { audio } : {}),
+    ...(page ? { page } : {}),
   };
 }
 
@@ -2646,20 +2664,23 @@ const htmlCaptureRenderer: RendererPlugin = {
   mutedFile: "html.part.mp4",
   captions: (_spec, prepared) => ((prepared as InstalledHtmlPack).drawsCaptions ? "renderer" : "shared-burn"),
   unavailable: (home) => htmlCaptureUnavailableReason(remotionDir(home)),
-  prepare: async (spec, home) => htmlPackFor(spec, (await installedHtmlPacks(remotionDir(home))).packs),
+  prepare: async (spec, home) => htmlPageModeFor(spec, htmlPackFor(spec, (await installedHtmlPacks(remotionDir(home))).packs)),
   async render(r) {
     const pack = r.prepared as InstalledHtmlPack;
     const chrome = await findChromium(remotionDir(r.ctx.home));
     if (!chrome) throw new NonRetryableError(`html-capture: no headless Chromium under ${remotionDir(r.ctx.home)}`);
+    // html-design (0.11.0): the page Hermes wrote for this run comes with the job; the pack's files are ../pack/.
+    const pageRoot = r.spec.page ? await preparePage(r.ctx, r.spec.page.assetId) : null;
     const props = buildHtmlCaptureProps(r.spec, {
       images: r.spec.shots.map((s) => `../in/${path.basename(r.named.get(s.assetId) as string)}`),
       font: r.spec.fontAssetId ? `../in/${path.basename(r.named.get(r.spec.fontAssetId) as string)}` : null,
       drawsCaptions: pack.drawsCaptions,
     });
-    r.ctx.progress(0.15, `Rendering ${pack.id} in headless Chromium`);
+    r.ctx.progress(0.15, pageRoot ? `Rendering the page Hermes designed (${pack.id}) in headless Chromium` : `Rendering ${pack.id} in headless Chromium`);
     const got = await captureHtml({
       chrome,
       root: pack.dir,
+      pageRoot,
       inDir: path.join(r.ctx.workDir, "in"),
       props,
       width: r.spec.width,
@@ -2677,10 +2698,29 @@ const htmlCaptureRenderer: RendererPlugin = {
     return {
       captionsBurned: drawn,
       captionNote: drawn && !r.spec.fontAssetId ? "no font in Assets; the template draws captions with its own font" : null,
-      extra: { htmlPack: { id: pack.id, version: pack.version }, template: pack.id, frames: got.frames },
+      extra: {
+        htmlPack: { id: pack.id, version: pack.version },
+        template: pack.id,
+        frames: got.frames,
+        ...(pageRoot ? { page: { designed: true, consoleErrors: got.consoleErrors.slice(0, 10) } } : {}),
+      },
     };
   },
 };
+
+/**
+ * A job's page and its pack must agree (0.11.0): a pack marked designed (html-design) only renders a page uploaded
+ * with the job, never its own reference page, and an uploaded page only renders with such a pack. Pure.
+ */
+export function htmlPageModeFor(spec: Pick<RenderSpec, "page">, pack: InstalledHtmlPack): InstalledHtmlPack {
+  if (pack.designed && !spec.page) {
+    throw new NonRetryableError(`${pack.id}@${pack.version} draws a page Hermes writes for each run, and this job carries none. Its reference page is never rendered for a run. Nothing was rendered.`);
+  }
+  if (!pack.designed && spec.page) {
+    throw new NonRetryableError(`This job carries a page, but ${pack.id}@${pack.version} is not an html-design pack; only an html-design pack renders a page uploaded with the job. Nothing was rendered.`);
+  }
+  return pack;
+}
 
 /** Every renderer plugin of this worker, by engine id. Same keys as RENDER_ENGINES (a test checks). */
 export const RENDERERS: Readonly<Record<string, RendererPlugin>> = {
@@ -2719,6 +2759,11 @@ export interface HtmlPackRef {
   id: string;
   version: string;
   drawsCaptions: boolean;
+  /**
+   * An html-design pack (0.11.0+): a run's page is uploaded with the job (Hermes wrote it); the pack's own index.html is
+   * only its reference page. A job for such a pack without a page, or a page for any other pack, is refused.
+   */
+  designed?: boolean;
   /** renderDigest of the pack's render/ files. */
   sha256: string;
 }
@@ -2738,7 +2783,7 @@ export function parseHtmlPacks(raw: unknown): HtmlPackRef[] {
     /^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(p.version) &&
     typeof p.sha256 === "string" &&
     /^[0-9a-f]{64}$/.test(p.sha256)
-      ? [{ id: p.id, version: p.version, drawsCaptions: p.drawsCaptions === true, sha256: p.sha256 }]
+      ? [{ id: p.id, version: p.version, drawsCaptions: p.drawsCaptions === true, ...(p.designed === true ? { designed: true } : {}), sha256: p.sha256 }]
       : [],
   );
 }
@@ -3120,10 +3165,11 @@ export function captureContentType(name: string): string {
 }
 
 /**
- * The file a capture server request maps to, or null. Pure. `/<token>/pack/<path>` is the pack's render folder and
- * `/<token>/in/<path>` the job's inputs; anything else, any dot segment, and anything outside the root is null.
+ * The file a capture server request maps to, or null. Pure. `/<token>/pack/<path>` is the pack's render folder,
+ * `/<token>/in/<path>` the job's inputs and, for a page uploaded with the job (html-design), `/<token>/page/<path>` that
+ * page's own files; anything else, any dot segment, and anything outside the root is null.
  */
-export function captureFileFor(urlPath: string, token: string, roots: { pack: string; in: string | null }): string | null {
+export function captureFileFor(urlPath: string, token: string, roots: { pack: string; in: string | null; page?: string | null }): string | null {
   let p: string;
   try {
     p = decodeURIComponent(urlPath.split("?")[0].split("#")[0]);
@@ -3135,11 +3181,122 @@ export function captureFileFor(urlPath: string, token: string, roots: { pack: st
   const which = parts[2];
   const rest = parts.slice(3);
   if (rest.length === 0 || rest.some((s) => s === "" || s === "." || s === ".." || s.startsWith(".") || s.includes("\\") || s.includes("\0"))) return null;
-  const root = which === "pack" ? roots.pack : which === "in" ? roots.in : null;
+  const root = which === "pack" ? roots.pack : which === "in" ? roots.in : which === "page" ? (roots.page ?? null) : null;
   if (!root) return null;
   const abs = path.resolve(root, ...rest);
   return abs.startsWith(path.resolve(root) + path.sep) ? abs : null;
 }
+
+// ---------------------------------------------------------------------------
+// html-design (0.11.0): a page Hermes wrote for one run, uploaded with the job. The portal validates it before anything
+// runs (apps/portal/lib/studio/html-design.ts); here it is treated as untrusted code all the same: served alone with
+// ../pack/ and ../in/, under a strict Content-Security-Policy, with fetch, XHR, workers, frames and every network API
+// replaced or refused, a tighter per-frame limit and a frame budget, and a named failure for anything it tries.
+
+/** The Content-Security-Policy every response of a capture with an uploaded page carries. */
+export const HTML_PAGE_CSP =
+  "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; base-uri 'none'; form-action 'none'";
+/** Limits for an uploaded page: the bundle (as the portal's validator allows it), and its time and frame budget. */
+export const HTML_PAGE_LIMITS = { files: 20, totalBytes: 300 * 1024, frameTimeoutMs: 10_000, initTimeoutMs: 20_000, maxFrames: 180 * 60 } as const;
+/** What a page bundle asset is: the files of the page Hermes wrote, as text, written by the portal (html-design.ts). */
+export const PAGE_BUNDLE_KIND = "venstudio-html-page";
+const PAGE_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,60}(\/[A-Za-z0-9][A-Za-z0-9_-]{0,60}){0,2}\.(html|js|css|svg)$/;
+
+/** The response headers of the capture server for `file`. Pure. A capture with an uploaded page adds the CSP. */
+export function captureHeaders(file: string, size: number, page: boolean): Record<string, string> {
+  return {
+    "content-type": captureContentType(file),
+    "content-length": String(size),
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    ...(page ? { "content-security-policy": HTML_PAGE_CSP, "referrer-policy": "no-referrer", "cross-origin-resource-policy": "same-origin" } : {}),
+  };
+}
+
+/**
+ * The files of a page bundle ({ format: 1, kind: "venstudio-html-page", files: { "index.html": "...", ... } }), checked
+ * again here whatever the portal checked: index.html present, at most 20 text files of 300 KB together, plain relative
+ * names (.html only for index.html, .js, .css, .svg), no NUL. Throws NonRetryableError naming the problem. Pure.
+ */
+export function parsePageBundle(raw: unknown): Array<{ path: string; text: string }> {
+  const bad = (m: string): never => {
+    throw new NonRetryableError(`The page uploaded with this job is not usable: ${m}. Nothing was rendered.`);
+  };
+  if (!isRecord(raw) || raw.format !== 1 || raw.kind !== PAGE_BUNDLE_KIND || !isRecord(raw.files)) return bad("it is not a VenStudio page bundle");
+  const entries = Object.entries(raw.files);
+  if (entries.length === 0 || entries.length > HTML_PAGE_LIMITS.files) bad(`it has ${entries.length} files; 1 to ${HTML_PAGE_LIMITS.files} are allowed`);
+  let total = 0;
+  const out: Array<{ path: string; text: string }> = [];
+  for (const [name, text] of entries) {
+    if (!PAGE_FILE_RE.test(name) || (name.endsWith(".html") && name !== "index.html")) bad(`the file name ${JSON.stringify(name.slice(0, 80))} is not allowed`);
+    if (typeof text !== "string" || text.includes("\0")) bad(`${name} is not text`);
+    total += Buffer.byteLength(text as string, "utf8");
+    out.push({ path: name, text: text as string });
+  }
+  if (total > HTML_PAGE_LIMITS.totalBytes) bad(`it holds ${total} bytes; the limit is ${HTML_PAGE_LIMITS.totalBytes}`);
+  if (!out.some((f) => f.path === "index.html")) bad("it has no index.html");
+  return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
+/** Writes a parsed page bundle into `dir` (created fresh). */
+export async function writePageBundle(files: ReadonlyArray<{ path: string; text: string }>, dir: string): Promise<void> {
+  await rm(dir, { recursive: true, force: true });
+  await mkdir(dir, { recursive: true });
+  for (const f of files) {
+    const dest = path.join(dir, ...f.path.split("/"));
+    if (!dest.startsWith(path.resolve(dir) + path.sep)) throw new NonRetryableError("The page bundle names a file outside its folder");
+    await mkdir(path.dirname(dest), { recursive: true });
+    await writeFile(dest, f.text, "utf8");
+  }
+}
+
+/** Downloads a job's page bundle and writes its files to <workDir>/page. Returns that folder. */
+async function preparePage(ctx: JobContext, assetId: string): Promise<string> {
+  const bundle = path.join(ctx.workDir, "page.json");
+  if (!(await stat(bundle).catch(() => null))) await ctx.download(assetId, bundle);
+  const st = await stat(bundle);
+  if (st.size > HTML_PAGE_LIMITS.totalBytes * 2 + 64 * 1024) throw new NonRetryableError("The page uploaded with this job is larger than any page Hermes may write. Nothing was rendered.");
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(bundle, "utf8"));
+  } catch {
+    throw new NonRetryableError("The page uploaded with this job is not a VenStudio page bundle (not JSON). Nothing was rendered.");
+  }
+  const dir = path.join(ctx.workDir, "page");
+  await writePageBundle(parsePageBundle(raw), dir);
+  return dir;
+}
+
+/**
+ * Injected after VIRTUAL_CLOCK_SOURCE into a page uploaded with the job: fetch, XMLHttpRequest, workers, window.open
+ * and dynamic frames are refused and reported through __venstudioBlocked, and every Content-Security-Policy violation
+ * (an image or font from another host, a frame, eval, a form) is reported too. Plain ES2020.
+ */
+export const HTML_PAGE_GUARD_SOURCE = String.raw`(() => {
+  const g = globalThis;
+  if (g.__venstudioGuard) return;
+  g.__venstudioGuard = true;
+  const report = (what) => { try { if (typeof g.__venstudioBlocked === "function") g.__venstudioBlocked(String(what).slice(0, 300)); } catch (e) {} };
+  const refuse = (what) => { report(what); throw new Error("Not available to a page while rendering: " + String(what)); };
+  g.fetch = function (u) { report("fetch " + String(u && u.url ? u.url : u)); return Promise.reject(new TypeError("fetch is not available while rendering")); };
+  g.XMLHttpRequest = function () { refuse("XMLHttpRequest"); };
+  g.Worker = function (u) { refuse("Worker " + String(u)); };
+  g.SharedWorker = function (u) { refuse("SharedWorker " + String(u)); };
+  g.open = function (u) { refuse("window.open " + String(u)); };
+  if (g.navigator) { try { g.navigator.sendBeacon = (u) => refuse("sendBeacon " + String(u)); } catch (e) {} }
+  if (g.document) {
+    const make = g.document.createElement.bind(g.document);
+    g.document.createElement = function (tag, o) {
+      const t = String(tag).toLowerCase();
+      if (t === "iframe" || t === "frame" || t === "object" || t === "embed" || t === "portal") refuse("<" + t + ">");
+      return make(tag, o);
+    };
+    g.document.addEventListener("securitypolicyviolation", (e) => report((e.blockedURI || "inline") + " (" + e.effectiveDirective + ")"), true);
+  }
+})();`;
+
+/** Evaluated after load and after init in a page uploaded with the job: elements a page may not hold. */
+const HTML_PAGE_DOM_CHECK = `(() => { const n = document.querySelectorAll("iframe, frame, object, embed, portal, base, meta[http-equiv], form[action]"); return Array.from(n).slice(0, 5).map((e) => "<" + e.tagName.toLowerCase() + ">"); })()`;
 
 /** A Chrome DevTools Protocol connection over --remote-debugging-pipe: NUL-terminated JSON in both directions. */
 class CdpPipe {
@@ -3229,21 +3386,52 @@ export interface HtmlCaptureOptions {
   timeoutMs: number;
   signal: AbortSignal;
   onProgress?: (fraction: number) => void;
-  /** "fail" (jobs): a blocked request fails the capture. "record" (the probe): it is only reported. */
+  /** "fail" (jobs): a blocked request fails the capture. "record" (the probe, a pack's preview): it is only reported. */
   onViolation?: "fail" | "record";
+  /**
+   * html-design (0.11.0): the folder of a page uploaded with the job. It is served as page/ and opened as
+   * page/index.html, `root` (the pack's render folder) as ../pack/ and `inDir` as ../in/; every response carries
+   * HTML_PAGE_CSP, HTML_PAGE_GUARD_SOURCE runs before the page, the tighter HTML_PAGE_LIMITS apply, and failures
+   * name the Hermes-designed page.
+   */
+  pageRoot?: string | null;
+  /**
+   * Still frames instead of a video (preview-frames, 0.11.0): every frame up to the last asked one is drawn in order
+   * (so a page that keeps state renders exactly as in the video), and only the asked ones are captured, as JPEG, and
+   * handed to onStill in order. No ffmpeg runs and `output` is not written.
+   */
+  stills?: { frames: readonly number[]; onStill: (index: number, frame: number, jpeg: Buffer) => Promise<void> };
 }
 
-/** Runs one capture: server, browser, page, frames into ffmpeg. Cleans everything up whatever happens. */
-export async function captureHtml(o: HtmlCaptureOptions): Promise<{ frames: number; violations: string[] }> {
+/** What a capture saw besides its frames: blocked attempts, and the page's console errors (up to 20 of each). */
+export interface HtmlCaptureResult {
+  frames: number;
+  violations: string[];
+  consoleErrors: string[];
+}
+
+/** Runs one capture: server, browser, page, frames into ffmpeg (or stills). Cleans everything up whatever happens. */
+export async function captureHtml(o: HtmlCaptureOptions): Promise<HtmlCaptureResult> {
   const token = createHash("sha256").update(`${process.pid}:${Date.now()}:${Math.random()}`).digest("hex").slice(0, 24);
   const violations: string[] = [];
   const errors: string[] = [];
+  const consoleErrors: string[] = [];
+  const pageMode = Boolean(o.pageRoot);
+  const who = pageMode ? "The Hermes-designed page" : "The template";
+  const limits = pageMode
+    ? { frameTimeoutMs: HTML_PAGE_LIMITS.frameTimeoutMs, initTimeoutMs: HTML_PAGE_LIMITS.initTimeoutMs }
+    : { frameTimeoutMs: HTML_CAPTURE_LIMITS.frameTimeoutMs, initTimeoutMs: HTML_CAPTURE_LIMITS.initTimeoutMs };
+  if (pageMode && o.totalFrames > HTML_PAGE_LIMITS.maxFrames) {
+    throw new NonRetryableError(`${who} would need ${o.totalFrames} frames; a page Hermes writes renders at most ${HTML_PAGE_LIMITS.maxFrames} (the frame budget). Nothing was rendered.`);
+  }
+  const stillFrames = o.stills ? [...new Set(o.stills.frames)].filter((f) => Number.isInteger(f) && f >= 0 && f < o.totalFrames).sort((a, b) => a - b) : null;
+  if (stillFrames && stillFrames.length === 0) throw new NonRetryableError("No still frame was asked for inside the video");
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     if (req.method !== "GET" && req.method !== "HEAD") {
       res.writeHead(405).end();
       return;
     }
-    const file = captureFileFor(req.url ?? "/", token, { pack: o.root, in: o.inDir });
+    const file = captureFileFor(req.url ?? "/", token, { pack: o.root, in: o.inDir, page: o.pageRoot ?? null });
     if (!file) {
       res.writeHead(404).end();
       return;
@@ -3251,7 +3439,7 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<{ frames: numb
     lstat(file)
       .then((st) => {
         if (!st.isFile()) throw new Error("not a file");
-        res.writeHead(200, { "content-type": captureContentType(file), "content-length": String(st.size), "cache-control": "no-store" });
+        res.writeHead(200, captureHeaders(file, st.size, pageMode));
         if (req.method === "HEAD") return void res.end();
         createReadStream(file).on("error", () => res.destroy()).pipe(res);
       })
@@ -3298,12 +3486,18 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<{ frames: numb
   };
   const checkViolations = () => {
     if (violations.length > 0 && (o.onViolation ?? "fail") === "fail") {
+      if (pageMode) {
+        throw new NonRetryableError(
+          `${who} tried to use the network or a blocked feature while rendering (${violations.slice(0, 3).join(", ")}). A page Hermes writes may only ` +
+            `load its own files, ../pack/ and ../in/, with no fetch, frames, workers or eval. Nothing was rendered.`,
+        );
+      }
       throw new NonRetryableError(
         `The template tried to use the network while rendering (${violations.slice(0, 3).join(", ")}). html-capture pages may only load ` +
           `files from their own pack and the job's inputs; vendor the file into the pack. Nothing was rendered.`,
       );
     }
-    if (errors.length > 0) throw new NonRetryableError(`The template failed while rendering: ${errors[0]}`);
+    if (errors.length > 0) throw new NonRetryableError(`${who} failed while rendering: ${errors[0]}`);
   };
   try {
     // One page: the about:blank tab the browser opened, or a new one when it has none yet.
@@ -3330,6 +3524,12 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<{ frames: numb
       } else if (method === "Runtime.exceptionThrown") {
         const d = params.exceptionDetails as { text?: string; exception?: { description?: string } } | undefined;
         if (errors.length < 5) errors.push(String(d?.exception?.description ?? d?.text ?? "an exception").slice(0, 500));
+      } else if (method === "Runtime.consoleAPICalled" && (params.type === "error" || params.type === "assert")) {
+        const args = Array.isArray(params.args) ? (params.args as Array<{ value?: unknown; description?: string }>) : [];
+        if (consoleErrors.length < 20) consoleErrors.push(args.map((a) => String(a.value ?? a.description ?? "")).join(" ").slice(0, 300) || "console.error");
+      } else if (method === "Log.entryAdded") {
+        const e = params.entry as { level?: string; text?: string } | undefined;
+        if (e?.level === "error" && consoleErrors.length < 20) consoleErrors.push(String(e.text ?? "").slice(0, 300));
       } else if (method === "Page.loadEventFired") loaded?.();
     });
     const page = (method: string, params: Record<string, unknown> = {}, timeoutMs?: number) => cdp.send(method, params, sessionId, timeoutMs);
@@ -3337,30 +3537,65 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<{ frames: numb
     await page("Network.enable");
     await page("Runtime.enable");
     await page("Page.enable");
+    await page("Log.enable");
     await page("Runtime.addBinding", { name: "__venstudioBlocked" });
     await page("Emulation.setDeviceMetricsOverride", { width: o.width, height: o.height, deviceScaleFactor: 1, mobile: false });
     await page("Page.addScriptToEvaluateOnNewDocument", { source: VIRTUAL_CLOCK_SOURCE });
+    if (pageMode) await page("Page.addScriptToEvaluateOnNewDocument", { source: HTML_PAGE_GUARD_SOURCE });
     const loadedP = new Promise<void>((resolve, reject) => {
       loaded = resolve;
       setTimeout(() => reject(new NonRetryableError(`The template page did not load within ${HTML_CAPTURE_LIMITS.loadTimeoutMs / 1000} s`)), HTML_CAPTURE_LIMITS.loadTimeoutMs).unref();
     });
     loadedP.catch(() => {});
-    const nav = (await page("Page.navigate", { url: `${origin}/${token}/pack/index.html` })) as { errorText?: string };
-    if (nav.errorText) throw new NonRetryableError(`The template page could not be opened: ${nav.errorText}`);
+    const nav = (await page("Page.navigate", { url: `${origin}/${token}/${pageMode ? "page" : "pack"}/index.html` })) as { errorText?: string };
+    if (nav.errorText) throw new NonRetryableError(`${who} could not be opened: ${nav.errorText}`);
     await loadedP;
     checkViolations();
-    const evaluate = async (expression: string, timeoutMs: number): Promise<unknown> => {
-      const r = (await page("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, timeoutMs)) as {
-        result?: { value?: unknown };
-        exceptionDetails?: { text?: string; exception?: { description?: string } };
-      };
-      if (r.exceptionDetails) throw new NonRetryableError(`The template failed: ${String(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text ?? "an exception").slice(0, 500)}`);
+    const evaluate = async (expression: string, timeoutMs: number, phase: string): Promise<unknown> => {
+      let r: { result?: { value?: unknown }; exceptionDetails?: { text?: string; exception?: { description?: string } } };
+      try {
+        r = (await page("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, timeoutMs)) as typeof r;
+      } catch (err) {
+        if (o.signal.aborted || timedOut) throw err;
+        throw new NonRetryableError(`${who} did not finish ${phase} within ${Math.round(timeoutMs / 1000)} s (${err instanceof Error ? err.message : String(err)}). Nothing was rendered.`);
+      }
+      if (r.exceptionDetails) {
+        const what = String(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text ?? "an exception").slice(0, 500);
+        throw new NonRetryableError(pageMode ? `${who} threw in ${phase}: ${what}. Nothing was rendered.` : `The template failed: ${what}`);
+      }
       return r.result?.value;
     };
-    const meta = (await evaluate(`window.__venstudio.init(${JSON.stringify(o.props)})`, HTML_CAPTURE_LIMITS.initTimeoutMs)) as Record<string, unknown> | null;
+    const domCheck = async () => {
+      if (!pageMode) return;
+      const found = (await evaluate(HTML_PAGE_DOM_CHECK, 5_000, "a check of its elements")) as unknown;
+      for (const tag of Array.isArray(found) ? found : []) violation(String(tag));
+      checkViolations();
+    };
+    await domCheck();
+    const meta = (await evaluate(`window.__venstudio.init(${JSON.stringify(o.props)})`, limits.initTimeoutMs, "init(props)")) as Record<string, unknown> | null;
     checkViolations();
+    await domCheck();
     const issue = htmlInitIssue(meta, { width: o.width, height: o.height, fps: o.fps, totalFrames: o.totalFrames });
-    if (issue) throw new NonRetryableError(issue);
+    if (issue) throw new NonRetryableError(pageMode ? issue.replace(/^The template/, who) : issue);
+
+    if (stillFrames && o.stills) {
+      // Stills: every frame up to the last asked one is drawn in order; only the asked ones are captured.
+      const last = stillFrames[stillFrames.length - 1];
+      let k = 0;
+      for (let f = 0; f <= last; f++) {
+        await evaluate(`window.__venstudio.frame(${f}, ${o.fps})`, limits.frameTimeoutMs, `renderFrame(${f})`);
+        checkViolations();
+        if (f !== stillFrames[k]) continue;
+        const shot = (await page("Page.captureScreenshot", { format: "jpeg", quality: 90, fromSurface: true, captureBeyondViewport: false }, limits.frameTimeoutMs)) as { data?: string };
+        checkViolations();
+        if (typeof shot.data !== "string" || shot.data.length === 0 || shot.data.length > (HTML_CAPTURE_LIMITS.frameBytes * 4) / 3) throw new Error(`still ${f} came back empty or too large`);
+        await o.stills.onStill(k, f, Buffer.from(shot.data, "base64"));
+        k++;
+        o.onProgress?.(k / stillFrames.length);
+      }
+      await domCheck();
+      return { frames: stillFrames.length, violations, consoleErrors };
+    }
 
     const ff = spawn(ffmpegPath(), htmlCaptureFfmpegArgs({ fps: o.fps, frames: o.totalFrames, output: o.output, burn: o.burn }), { cwd: o.cwd, stdio: ["pipe", "ignore", "pipe"] });
     ffmpeg = ff;
@@ -3389,8 +3624,8 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<{ frames: numb
     stdin.on("error", () => {});
     let lastReport = 0;
     for (let f = 0; f < o.totalFrames; f++) {
-      await evaluate(`window.__venstudio.frame(${f}, ${o.fps})`, HTML_CAPTURE_LIMITS.frameTimeoutMs);
-      const shot = (await page("Page.captureScreenshot", { format: "jpeg", quality: 92, fromSurface: true, captureBeyondViewport: false, optimizeForSpeed: true }, HTML_CAPTURE_LIMITS.frameTimeoutMs)) as { data?: string };
+      await evaluate(`window.__venstudio.frame(${f}, ${o.fps})`, limits.frameTimeoutMs, `renderFrame(${f})`);
+      const shot = (await page("Page.captureScreenshot", { format: "jpeg", quality: 92, fromSurface: true, captureBeyondViewport: false, optimizeForSpeed: true }, limits.frameTimeoutMs)) as { data?: string };
       checkViolations();
       if (typeof shot.data !== "string" || shot.data.length === 0 || shot.data.length > (HTML_CAPTURE_LIMITS.frameBytes * 4) / 3) throw new Error(`frame ${f} came back empty or too large`);
       if (ffClosed) await ffStopped;
@@ -3403,8 +3638,9 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<{ frames: numb
     }
     stdin.end();
     await ffDone;
+    await domCheck();
     o.onProgress?.(1);
-    return { frames: o.totalFrames, violations };
+    return { frames: o.totalFrames, violations, consoleErrors };
   } catch (err) {
     ffmpeg?.kill("SIGKILL");
     if (o.signal.aborted) throw new Error("Aborted");
@@ -3505,9 +3741,59 @@ async function probeHtmlCapture(dir: string): Promise<string | null> {
   }
 }
 
+const previewProbes = new Map<string, Promise<string | null>>();
+
+/**
+ * Why this machine cannot take still frames (preview-frames), or null: the html-capture probe must have passed, then
+ * one still of the probe page must come back as a JPEG of the asked size. Once per process and directory. The worker
+ * reports preview-frames only when this is null, and the handler checks it again.
+ */
+export function previewFramesUnavailableReason(dir: string): Promise<string | null> {
+  let p = previewProbes.get(dir);
+  if (!p) {
+    p = probePreviewFrames(dir).catch((err: unknown) => `the still-frame probe failed: ${err instanceof Error ? err.message : String(err)}`);
+    previewProbes.set(dir, p);
+  }
+  return p;
+}
+
+async function probePreviewFrames(dir: string): Promise<string | null> {
+  const html = await htmlCaptureUnavailableReason(dir);
+  if (html) return html;
+  const chrome = await findChromium(dir);
+  if (!chrome) return "no headless Chromium";
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "vs-preview-probe-"));
+  try {
+    await mkdir(path.join(tmp, "pack"));
+    await writeFile(path.join(tmp, "pack", "index.html"), HTML_PROBE_PAGE);
+    const size = { width: 160, height: 90, fps: 10, totalFrames: 10 };
+    const got: Buffer[] = [];
+    await captureHtml({
+      chrome,
+      root: path.join(tmp, "pack"),
+      inDir: null,
+      props: size,
+      ...size,
+      output: path.join(tmp, "unused.mp4"),
+      cwd: tmp,
+      burn: null,
+      timeoutMs: 60_000,
+      signal: AbortSignal.timeout(70_000),
+      onViolation: "record",
+      stills: { frames: [5], onStill: async (_k, _f, jpeg) => void got.push(jpeg) },
+    });
+    const jpeg = got[0];
+    if (!jpeg || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return "the probe still is not a JPEG";
+    return null;
+  } finally {
+    await rm(tmp, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 /** Forgets the html-capture probe and the installed HTML packs. For tests, and after an install in the same process. */
 export function clearHtmlCaptureCache() {
   htmlProbes.clear();
+  previewProbes.clear();
   htmlPackLists.clear();
 }
 
@@ -3532,8 +3818,11 @@ export function withPlaceholderUuids(payload: Record<string, unknown>): Record<s
  */
 export async function captureHtmlFixture(o: { pack: string; out: string; payload?: string; remotion: string; font?: string }): Promise<Record<string, unknown>> {
   const packDir = path.resolve(o.pack);
-  const style = JSON.parse(await readFile(path.join(packDir, "style.json"), "utf8")) as { renderer?: { engine?: unknown; drawsCaptions?: unknown } };
+  const style = JSON.parse(await readFile(path.join(packDir, "style.json"), "utf8")) as { renderer?: { engine?: unknown; drawsCaptions?: unknown }; workflow?: { recipe?: unknown } };
   if (style.renderer?.engine !== "html-capture") throw new Error(`${packDir} is not an html-capture pack`);
+  // An html-design pack's render/index.html is its reference page: it is rendered the way a page Hermes wrote is (page
+  // mode: served as page/ beside ../pack/, under the CSP and the page guard), so CI proves the sandbox lets it draw.
+  const designed = style.workflow?.recipe === "html-design";
   const drawsCaptions = style.renderer.drawsCaptions === true;
   const raw = JSON.parse(await readFile(o.payload ? path.resolve(o.payload) : path.join(packDir, "fixtures", "payload.json"), "utf8")) as Record<string, unknown>;
   const spec = parseRenderSpec(withPlaceholderUuids(raw));
@@ -3563,6 +3852,7 @@ export async function captureHtmlFixture(o: { pack: string; out: string; payload
     const got = await captureHtml({
       chrome,
       root: path.join(packDir, "render"),
+      pageRoot: designed ? path.join(packDir, "render") : null,
       inDir: path.join(work, "in"),
       props,
       width: spec.width,
@@ -3583,6 +3873,7 @@ export async function captureHtmlFixture(o: { pack: string; out: string; payload
       durationSec: spec.durationSec,
       captionsBurned: burn?.captionsBurned ?? (drawsCaptions && spec.captions.length > 0),
       captionNote: burn?.captionNote ?? null,
+      ...(designed ? { page: "reference page, rendered as an uploaded page (CSP and page guard on)", consoleErrors: got.consoleErrors } : {}),
       seconds: round2((Date.now() - started) / 1000),
     };
   } finally {
@@ -3720,6 +4011,151 @@ async function renderVideoHandler(ctx: JobContext): Promise<Record<string, unkno
     renderSeconds: round2(renderSeconds),
     bytes: up.bytes,
     sha256: up.sha256,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// preview-frames (0.11.0): still frames of an html-capture page with a run's props, before the voice and the render.
+// The page is an installed pack's (scene-spec) or one uploaded with the job (html-design); either way it runs through
+// captureHtml with the same loopback server, request blocking and virtual clock as a render, and nothing is encoded.
+
+/** Most stills one preview takes, and the default the portal asks for. */
+export const PREVIEW_LIMITS = { maxStills: 12, defaultStills: 6 } as const;
+/**
+ * The narration id a preview's render spec is parsed with: a preview runs before the voice, so there is no narration.
+ * It is never downloaded and never reaches the page.
+ */
+export const PREVIEW_NO_NARRATION = "00000000-0000-4000-8000-00000000a0a0";
+
+export interface PreviewPlan {
+  spec: RenderSpec;
+  /** The asked times, in seconds, and the frame each one is (0-based, inside the video). */
+  stills: Array<{ atSec: number; frame: number }>;
+  /** The page uploaded with the job (html-design), or null for the pack's own page (scene-spec). */
+  pageAssetId: string | null;
+}
+
+/**
+ * Reads a preview-frames payload: a render-video payload without the narration (the run has none yet), with
+ * `durationSec` the planned length, plus `preview: { times: [seconds], page?: assetId }`. The render part goes through
+ * parseRenderSpec unchanged (with PREVIEW_NO_NARRATION standing in for the narration), so the props are exactly the
+ * render's. Pure; throws NonRetryableError by name.
+ */
+export function parsePreviewPayload(payload: Record<string, unknown>): PreviewPlan {
+  const bad = (m: string): never => {
+    throw new NonRetryableError(`preview-frames payload: ${m}`);
+  };
+  const preview = isRecord(payload.preview) ? payload.preview : bad("there is no preview block");
+  const durationSec = num(payload.durationSec);
+  if (!(durationSec > 0) || durationSec > RENDER_LIMITS.maxSeconds) bad(`durationSec must be above 0 and at most ${RENDER_LIMITS.maxSeconds}`);
+  if (payload.narrationAssetId !== undefined || payload.audio !== undefined) bad("a preview has no narration or soundtrack");
+  const inputs = Array.isArray(payload.inputs) ? payload.inputs.filter((v): v is string => typeof v === "string") : [];
+  const spec = parseRenderSpec({ ...payload, page: undefined, inputs: [...inputs, PREVIEW_NO_NARRATION], narrationAssetId: PREVIEW_NO_NARRATION, narrationSec: durationSec });
+  if (spec.engine !== "html-capture") bad(`previews are for html-capture pages, not "${spec.engine}"`);
+  const rawPage = preview.page;
+  let pageAssetId: string | null = null;
+  if (rawPage !== undefined && rawPage !== null) {
+    if (typeof rawPage !== "string" || !UUID_RE.test(rawPage)) bad("preview.page must be the page asset id");
+    if (!inputs.includes(rawPage as string)) bad("the page asset is not listed in inputs");
+    pageAssetId = rawPage as string;
+  }
+  const times = Array.isArray(preview.times) ? preview.times : [];
+  if (times.length === 0 || times.length > PREVIEW_LIMITS.maxStills) bad(`preview.times must hold 1 to ${PREVIEW_LIMITS.maxStills} times`);
+  const totalFrames = Math.round(spec.durationSec * spec.fps);
+  const stills = times.map((t, i) => {
+    const at = num(t);
+    if (!(at >= 0) || at > spec.durationSec + 0.001) return bad(`preview time ${i + 1} must be from 0 to ${spec.durationSec} s`);
+    return { atSec: round2(at), frame: Math.max(0, Math.min(totalFrames - 1, Math.round(at * spec.fps))) };
+  });
+  const seen = new Set<number>();
+  const unique = stills.filter((s) => (seen.has(s.frame) ? false : (seen.add(s.frame), true))).sort((a, b) => a.frame - b.frame);
+  return { spec, stills: unique, pageAssetId };
+}
+
+/** The file name of the k-th still (0-based). */
+export const stillFile = (k: number) => `still-${String(k + 1).padStart(2, "0")}.jpg`;
+
+async function previewFramesHandler(ctx: JobContext): Promise<Record<string, unknown>> {
+  const dir = remotionDir(ctx.home);
+  const why = await previewFramesUnavailableReason(dir);
+  if (why) throw new NonRetryableError(`This worker cannot take still frames: ${why}`);
+  const plan = parsePreviewPayload(ctx.job.payload);
+  const { spec } = plan;
+  const pack = htmlPageModeFor({ page: plan.pageAssetId ? { assetId: plan.pageAssetId } : undefined }, htmlPackFor(spec, (await installedHtmlPacks(dir)).packs));
+  const chrome = await findChromium(dir);
+  if (!chrome) throw new NonRetryableError(`preview-frames: no headless Chromium under ${dir}`);
+  // Only the media the page draws: the shots' pictures and the font. Never the page bundle, which lives in page/.
+  const inDir = path.join(ctx.workDir, "in");
+  await mkdir(inDir, { recursive: true });
+  const ids = [...new Set([...spec.shots.map((s) => s.assetId), ...(spec.fontAssetId ? [spec.fontAssetId] : [])])];
+  const named = new Map<string, string>();
+  for (const [k, id] of ids.entries()) {
+    const raw = path.join(inDir, id);
+    if (id === spec.fontAssetId) {
+      const dest = path.join(inDir, `${id}.ttf`);
+      if (!(await stat(dest).catch(() => null))) {
+        await ctx.download(id, raw);
+        await rename(raw, dest);
+      }
+      named.set(id, dest);
+      continue;
+    }
+    if (!(await stat(raw).catch(() => null))) await ctx.download(id, raw);
+    const info = await sniffFile(raw);
+    if (!info || info.kind !== "image") throw new NonRetryableError(`Asset ${id} is used as a picture but is ${info?.mime ?? "not a PNG, JPEG or WebP file"}`);
+    const dest = path.join(inDir, `${id}.${info.ext}`);
+    await rename(raw, dest);
+    named.set(id, dest);
+    ctx.progress(0.05 + ((k + 1) / ids.length) * 0.1, `Downloaded ${k + 1} of ${ids.length} files`);
+  }
+  const pageRoot = plan.pageAssetId ? await preparePage(ctx, plan.pageAssetId) : null;
+  const props = buildHtmlCaptureProps(spec, {
+    images: spec.shots.map((s) => `../in/${path.basename(named.get(s.assetId) as string)}`),
+    font: spec.fontAssetId ? `../in/${path.basename(named.get(spec.fontAssetId) as string)}` : null,
+    drawsCaptions: pack.drawsCaptions,
+  });
+  const stills: Array<{ name: string; atSec: number; frame: number; bytes: number }> = [];
+  ctx.progress(0.2, `Taking ${plan.stills.length} still frames of ${pageRoot ? "the page Hermes designed" : pack.id}`);
+  const got = await captureHtml({
+    chrome,
+    root: pack.dir,
+    pageRoot,
+    inDir,
+    props,
+    width: spec.width,
+    height: spec.height,
+    fps: spec.fps,
+    totalFrames: props.totalFrames,
+    output: path.join(ctx.workDir, "unused.mp4"),
+    cwd: ctx.workDir,
+    burn: null,
+    timeoutMs: remotionTimeoutMs(spec.durationSec),
+    signal: ctx.signal,
+    // A page Hermes wrote fails on any attempt, as at render; a signed pack's page is reported (its render would fail).
+    onViolation: pageRoot ? "fail" : "record",
+    onProgress: (f) => ctx.progress(0.2 + f * 0.75, `Still ${Math.round(f * plan.stills.length)} of ${plan.stills.length}`),
+    stills: {
+      frames: plan.stills.map((x) => x.frame),
+      onStill: async (k, frame, jpeg) => {
+        const name = stillFile(k);
+        const file = path.join(ctx.workDir, name);
+        await writeFile(file, jpeg);
+        await ctx.upload(name, file, "image/jpeg");
+        stills.push({ name, atSec: plan.stills.find((x) => x.frame === frame)?.atSec ?? round2(frame / spec.fps), frame, bytes: jpeg.length });
+      },
+    },
+  });
+  return {
+    stills,
+    width: spec.width,
+    height: spec.height,
+    fps: spec.fps,
+    durationSec: spec.durationSec,
+    htmlPack: { id: pack.id, version: pack.version },
+    page: pageRoot ? "uploaded" : "pack",
+    drawsCaptions: pack.drawsCaptions,
+    consoleErrors: got.consoleErrors,
+    blocked: got.violations,
   };
 }
 
@@ -5153,7 +5589,7 @@ Usage:
   node venstudio-worker.ts pin-key --key <base64>      pin the portal's update key (used by install.sh)
   node venstudio-worker.ts unpack-bundle --file <bundle.json> --dir <dir>   (used by install.sh --with-remotion)
   node venstudio-worker.ts install-packs --file <style-packs.json>          (used by install.sh)
-  node venstudio-worker.ts capture-html --pack <packs/<id>> --out <file.mp4> [--payload <json>] [--remotion <dir>] [--font <ttf>]   (CI, pack authors)
+  node venstudio-worker.ts capture-html --pack <packs/<id>> --out <file.mp4> [--payload <json>] [--remotion <dir>] [--font <ttf>]   (CI, pack authors; an html-design pack's reference page renders as an uploaded page)
 Env: VENSTUDIO_HOME, VENSTUDIO_CHROMIUM_PATH (html-capture; default: the Remotion project's Chrome Headless Shell), VENSTUDIO_AUTO_UPDATE=0 (no self-update), VENSTUDIO_UPDATE_CHECK_SECONDS, VENSTUDIO_REMOTION_DIR, VENSTUDIO_REMOTION_CONCURRENCY, FFMPEG_PATH, KOKORO_URL, VENSTUDIO_KOKORO_URL (enables tts), VENSTUDIO_AGENT_TASKS=1 (hold mode only, unverified), VENSTUDIO_EXTRA_CAPS, HTTPS_PROXY`;
 
 /**

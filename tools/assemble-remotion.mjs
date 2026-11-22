@@ -8,7 +8,7 @@
  *   <out>/src/packs/index.ts            generated: imports each pack's `composition`
  *   <out>/src/packs/packs.json          generated: [{ id, version, composition }]
  *   <out>/html/<pack id>/...            every html-capture pack's render/ files (the page and its vendored files)
- *   <out>/html/packs.json               generated: [{ id, version, drawsCaptions, sha256 }] (sha256: renderDigest)
+ *   <out>/html/packs.json               generated: [{ id, version, drawsCaptions, designed?, sha256 }] (sha256: renderDigest)
  *
  *   node tools/assemble-remotion.mjs <out dir> [--status trial,proven,listed]
  *
@@ -60,7 +60,8 @@ export function remotionPacks(root, statuses = null) {
 
 /** html/packs.json: the html-capture packs a worker serves pages from. Same text as venstudio's bundle builder. */
 export function htmlPackListJson(packs) {
-  return `${JSON.stringify(byId(packs).map((p) => ({ id: p.id, version: p.version, drawsCaptions: p.drawsCaptions === true, sha256: p.sha256 })), null, 2)}\n`;
+  // designed: an html-design pack (worker 0.11.0+): a run's page comes with the job, never from the pack's own page.
+  return `${JSON.stringify(byId(packs).map((p) => ({ id: p.id, version: p.version, drawsCaptions: p.drawsCaptions === true, ...(p.designed ? { designed: true } : {}), sha256: p.sha256 })), null, 2)}\n`;
 }
 
 /** The html-capture packs under <root>/packs, optionally only those with one of `statuses`, with their renderDigest. */
@@ -76,7 +77,7 @@ export function htmlPacks(root, statuses = null) {
     }
     if (s?.renderer?.engine !== "html-capture") continue;
     if (statuses && !statuses.includes(s.status)) continue;
-    out.push({ id: s.id, version: s.version, drawsCaptions: s.renderer.drawsCaptions === true, sha256: renderDigest(packFiles(path.join(dir, id))), dir: path.join(dir, id, "render") });
+    out.push({ id: s.id, version: s.version, drawsCaptions: s.renderer.drawsCaptions === true, designed: s.workflow?.recipe === "html-design", sha256: renderDigest(packFiles(path.join(dir, id))), dir: path.join(dir, id, "render") });
   }
   return out;
 }

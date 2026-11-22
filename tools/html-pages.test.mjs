@@ -95,20 +95,30 @@ class FakeNode {
 function loadPage(packDir) {
   const render = path.join(packDir, "render");
   const html = readFileSync(path.join(render, "index.html"), "utf8");
-  const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
+  // Scripts in page order: files (<script src>) and inline blocks (an html-design page keeps its JS inline).
+  const scripts = [...html.matchAll(/<script(?: src="([^"]+)")?>([\s\S]*?)<\/script>/g)].map((m) => (m[1] ? { file: m[1] } : { inline: m[2] }));
   const nodes = { stage: new FakeNode("main"), root: new FakeNode("div") };
   nodes.stage.appendChild(nodes.root);
   const document = {
     getElementById: (id) => nodes[id] ?? null,
     createElement: (t) => new FakeNode(t),
     createElementNS: (_ns, t) => new FakeNode(t),
-    fonts: { load: async () => [] },
+    fonts: { load: async () => [], add: () => {}, ready: Promise.resolve() },
   };
-  const ctx = { document, console, Math, Promise, Object, Array, Number, String, JSON };
+  class FontFace {
+    load() {
+      return Promise.resolve(this);
+    }
+  }
+  const ctx = { document, console, Math, Promise, Object, Array, Number, String, JSON, FontFace };
   ctx.window = ctx;
   vm.createContext(ctx);
-  for (const s of scripts) vm.runInContext(readFileSync(path.join(render, s), "utf8"), ctx, { filename: s });
-  return { ctx, root: nodes.root };
+  for (const s of scripts) {
+    if (s.file) vm.runInContext(readFileSync(path.join(render, s.file), "utf8"), ctx, { filename: s.file });
+    else if (s.inline.trim()) vm.runInContext(s.inline, ctx, { filename: "index.html (inline)" });
+  }
+  // Pages draw into #stage (or into #root inside it); walk the whole stage.
+  return { ctx, root: nodes.stage, inner: nodes.root };
 }
 
 function htmlPacks() {
@@ -124,8 +134,9 @@ async function render(pack, mutate) {
   if (mutate) mutate(raw);
   const spec = worker.parseRenderSpec(worker.withPlaceholderUuids(raw));
   const props = worker.buildHtmlCaptureProps(spec, { images: spec.shots.map((_, i) => `../in/shot-${i}.png`), font: null, drawsCaptions: pack.style.renderer.drawsCaptions === true });
-  const { ctx, root } = loadPage(pack.dir);
+  const { ctx, root: stage, inner } = loadPage(pack.dir);
   const got = await ctx.VENSTUDIO.init(JSON.parse(JSON.stringify(props)));
+  const root = inner.children.length > 0 ? inner : stage;
   assert.deepEqual({ ...got }, { totalFrames: props.totalFrames, fps: props.fps, width: props.width, height: props.height }, `${pack.id}: init answers the job's size, fps and frame count`);
   const seen = new Map();
   for (let f = 0; f < props.totalFrames; f++) {
