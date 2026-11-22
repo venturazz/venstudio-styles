@@ -454,6 +454,12 @@ export function validateWorkflow(style) {
     issues.push(`workflow.recipe html-design needs engine html-capture (the worker captures the page Hermes writes); this pack renders with ${String(engine)}`);
   }
   if (w.recipe === "html-design") {
+    // Worker 0.11.0 is the first that renders an uploaded page (its CSP and guard) and takes stills; an older worker would
+    // ignore the page and draw the pack's reference page instead, so it must never report such a pack.
+    const v = isRecord(style.renderer) ? style.renderer.minWorkerVersion : undefined;
+    if (typeof v !== "string" || !WORKER_VERSION_RE.test(v) || compareVersions(v, "0.11.0") < 0) {
+      issues.push("renderer.minWorkerVersion must be 0.11.0 or later for html-design (the first worker that renders a page uploaded with the job and takes still frames)");
+    }
     const review = Array.isArray(w.review) ? w.review : [];
     const missing = HTML_DESIGN_REVIEW.filter((k) => !review.includes(k));
     if (missing.length > 0) issues.push(`workflow.review of an html-design pack must name ${HTML_DESIGN_REVIEW.join(" and ")}: the owner checks the page and its still frames every time (missing ${missing.join(", ")})`);

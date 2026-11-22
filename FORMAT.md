@@ -54,7 +54,7 @@ Rules the validator applies beyond the shape:
 - `hermes` is research only (owner decision): such a pack is at most `trial`, never `proven` or `listed`. It has no
   render project and no `ci-render` entry (there is no Hermes in CI).
 - `workflow.recipe` `html-design` is research only too (owner decision: Hermes writes the page, the one place
-  model-written code runs): engine `html-capture` only, at most `trial`, a `design` block, `workflow.review` naming
+  model-written code runs): engine `html-capture` only, `minWorkerVersion` 0.11.0 or later, at most `trial`, a `design` block, `workflow.review` naming
   `html-design` and `preview`, and for `lab` or `trial` a `research-source` entry (the research and the owner decision
   it is built from) or a real `ci-render` with result `pass`. No GSAP under `render/vendor/` until the owner approves
   its licence.

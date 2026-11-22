@@ -858,6 +858,14 @@ export function conditionalJobTypes(env: NodeJS.ProcessEnv = process.env, mode?:
 
 const CONDITIONAL_TYPES = ["tts", "agent-task"];
 
+/**
+ * The job types a claim names: preview-frames only when this machine reports the preview-frames capability (its still
+ * probe passed), so a worker whose browser cannot take stills never claims a preview queued under a pack. Pure.
+ */
+export function claimJobTypes(types: readonly string[], capabilities: readonly string[]): string[] {
+  return types.filter((t) => t !== "preview-frames" || capabilities.includes("preview-frames"));
+}
+
 /** The job types this worker tells the portal it can run. */
 export function advertisedJobTypes(env: NodeJS.ProcessEnv = process.env, mode?: WorkerMode): string[] {
   const on = conditionalJobTypes(env, mode);
@@ -2702,7 +2710,7 @@ const htmlCaptureRenderer: RendererPlugin = {
         htmlPack: { id: pack.id, version: pack.version },
         template: pack.id,
         frames: got.frames,
-        ...(pageRoot ? { page: { designed: true, consoleErrors: got.consoleErrors.slice(0, 10) } } : {}),
+        ...(pageRoot ? { page: { designed: true, sandboxed: got.sandboxed, consoleErrors: got.consoleErrors.slice(0, 10) } } : {}),
       },
     };
   },
@@ -3077,8 +3085,12 @@ export function captureUrlAllowed(url: string, origin: string): boolean {
   }
 }
 
-/** Chromium flags for a capture. Pure. Network is denied twice more beside request interception: a dead proxy and a resolver that resolves nothing. */
-export function chromiumArgs(o: { width: number; height: number; userDataDir: string }): string[] {
+/**
+ * Chromium flags for a capture. Pure. Network is denied twice more beside request interception: a dead proxy and a
+ * resolver that resolves nothing. `sandbox`: keep Chromium's own process sandbox on (an uploaded page, when the machine
+ * supports it, chromiumSandboxWorks); otherwise --no-sandbox, as Remotion launches the same browser for signed packs.
+ */
+export function chromiumArgs(o: { width: number; height: number; userDataDir: string; sandbox?: boolean }): string[] {
   return [
     "--headless",
     "--remote-debugging-pipe",
@@ -3087,8 +3099,7 @@ export function chromiumArgs(o: { width: number; height: number; userDataDir: st
     "--force-device-scale-factor=1",
     "--hide-scrollbars",
     "--mute-audio",
-    // As Remotion launches the same browser; the pages are signed packs and cannot reach the network.
-    "--no-sandbox",
+    ...(o.sandbox ? [] : ["--no-sandbox"]),
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-dev-shm-usage",
@@ -3195,9 +3206,12 @@ export function captureFileFor(urlPath: string, token: string, roots: { pack: st
 
 /** The Content-Security-Policy every response of a capture with an uploaded page carries. */
 export const HTML_PAGE_CSP =
-  "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; base-uri 'none'; form-action 'none'";
+  "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; " +
+  // worker-src and child-src fall back to script-src ('self') in CSP 3, so workers and service workers are refused here.
+  "worker-src 'none'; child-src 'none'; frame-src 'none'; object-src 'none'; connect-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'";
+/** Frame budget of an uploaded page: 30 minutes at 30 fps (the render limit of 1800 s), whatever the job asks. */
 /** Limits for an uploaded page: the bundle (as the portal's validator allows it), and its time and frame budget. */
-export const HTML_PAGE_LIMITS = { files: 20, totalBytes: 300 * 1024, frameTimeoutMs: 10_000, initTimeoutMs: 20_000, maxFrames: 180 * 60 } as const;
+export const HTML_PAGE_LIMITS = { files: 20, totalBytes: 300 * 1024, frameTimeoutMs: 10_000, initTimeoutMs: 20_000, maxFrames: 1800 * 30 } as const;
 /** What a page bundle asset is: the files of the page Hermes wrote, as text, written by the portal (html-design.ts). */
 export const PAGE_BUNDLE_KIND = "venstudio-html-page";
 const PAGE_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,60}(\/[A-Za-z0-9][A-Za-z0-9_-]{0,60}){0,2}\.(html|js|css|svg)$/;
@@ -3283,7 +3297,14 @@ export const HTML_PAGE_GUARD_SOURCE = String.raw`(() => {
   g.Worker = function (u) { refuse("Worker " + String(u)); };
   g.SharedWorker = function (u) { refuse("SharedWorker " + String(u)); };
   g.open = function (u) { refuse("window.open " + String(u)); };
-  if (g.navigator) { try { g.navigator.sendBeacon = (u) => refuse("sendBeacon " + String(u)); } catch (e) {} }
+  if (g.navigator) {
+    try { g.navigator.sendBeacon = (u) => refuse("sendBeacon " + String(u)); } catch (e) {}
+    const sw = { register: (u) => { report("serviceWorker " + String(u)); return Promise.reject(new Error("Service workers are not available while rendering")); }, getRegistrations: () => Promise.resolve([]), ready: new Promise(() => {}), controller: null, addEventListener: () => {}, removeEventListener: () => {} };
+    try { Object.defineProperty(Object.getPrototypeOf(g.navigator), "serviceWorker", { get: () => sw, configurable: false }); } catch (e) {}
+  }
+  // The first listener on the capture path (window, capture phase): no listener the page adds later can stop it seeing a
+  // violation. The worker also reads Chromium's own security log for CSP refusals, which page code cannot touch.
+  if (typeof g.addEventListener === "function") g.addEventListener("securitypolicyviolation", (e) => report((e.blockedURI || "inline") + " (" + e.effectiveDirective + ")"), true);
   if (g.document) {
     const make = g.document.createElement.bind(g.document);
     g.document.createElement = function (tag, o) {
@@ -3291,7 +3312,6 @@ export const HTML_PAGE_GUARD_SOURCE = String.raw`(() => {
       if (t === "iframe" || t === "frame" || t === "object" || t === "embed" || t === "portal") refuse("<" + t + ">");
       return make(tag, o);
     };
-    g.document.addEventListener("securitypolicyviolation", (e) => report((e.blockedURI || "inline") + " (" + e.effectiveDirective + ")"), true);
   }
 })();`;
 
@@ -3408,6 +3428,42 @@ export interface HtmlCaptureResult {
   frames: number;
   violations: string[];
   consoleErrors: string[];
+  /** True when Chromium ran with its own process sandbox (page mode, where the machine supports it). */
+  sandboxed: boolean;
+}
+
+const sandboxProbes = new Map<string, Promise<boolean>>();
+
+/**
+ * Whether this Chromium starts with its process sandbox on here (user namespaces or a setuid helper): it is launched
+ * without --no-sandbox and must answer Browser.getVersion within 15 s. Once per process and binary; false on any doubt.
+ */
+export function chromiumSandboxWorks(chrome: string): Promise<boolean> {
+  let p = sandboxProbes.get(chrome);
+  if (!p) {
+    p = (async () => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), "vs-sandbox-probe-"));
+      const b = spawn(chrome, chromiumArgs({ width: 64, height: 64, userDataDir: dir, sandbox: true }), { stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"], detached: true });
+      const cdp = new CdpPipe(b.stdio[3] as Writable, b.stdio[4] as Readable);
+      b.on("exit", () => cdp.fail(new Error("exited")));
+      b.on("error", (err) => cdp.fail(err));
+      try {
+        await cdp.send("Browser.getVersion", {}, undefined, 15_000);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        await cdp.send("Browser.close", {}, undefined, 2000).catch(() => {});
+        try {
+          if (b.pid) process.kill(-b.pid, "SIGKILL");
+        } catch {}
+        cdp.fail(new Error("closed"));
+        await rm(dir, { recursive: true, force: true }).catch(() => {});
+      }
+    })().catch(() => false);
+    sandboxProbes.set(chrome, p);
+  }
+  return p;
 }
 
 /** Runs one capture: server, browser, page, frames into ffmpeg (or stills). Cleans everything up whatever happens. */
@@ -3455,7 +3511,9 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<HtmlCaptureRes
   const port = (server.address() as AddressInfo).port;
   const origin = `http://127.0.0.1:${port}`;
   const userDataDir = await mkdtemp(path.join(os.tmpdir(), "vs-html-capture-"));
-  const browser = spawn(o.chrome, chromiumArgs({ width: o.width, height: o.height, userDataDir }), { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"], detached: true });
+  // A page Hermes wrote runs with Chromium's own sandbox wherever this machine supports it (probed once per process).
+  const sandbox = pageMode ? await chromiumSandboxWorks(o.chrome) : false;
+  const browser = spawn(o.chrome, chromiumArgs({ width: o.width, height: o.height, userDataDir, sandbox }), { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"], detached: true });
   let browserTail = "";
   browser.stderr?.setEncoding("utf8");
   browser.stderr?.on("data", (c: string) => {
@@ -3528,8 +3586,11 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<HtmlCaptureRes
         const args = Array.isArray(params.args) ? (params.args as Array<{ value?: unknown; description?: string }>) : [];
         if (consoleErrors.length < 20) consoleErrors.push(args.map((a) => String(a.value ?? a.description ?? "")).join(" ").slice(0, 300) || "console.error");
       } else if (method === "Log.entryAdded") {
-        const e = params.entry as { level?: string; text?: string } | undefined;
-        if (e?.level === "error" && consoleErrors.length < 20) consoleErrors.push(String(e.text ?? "").slice(0, 300));
+        const e = params.entry as { level?: string; text?: string; source?: string; url?: string } | undefined;
+        // Chromium logs every Content-Security-Policy refusal itself (source security or violation): in page mode that is
+        // a blocked attempt, recorded whatever the page's own scripts do with the violation event.
+        if (pageMode && (e?.source === "security" || e?.source === "violation" || /Refused to /.test(String(e?.text ?? "")))) violation(`CSP: ${String(e?.text ?? "").slice(0, 240)}`);
+        else if (e?.level === "error" && consoleErrors.length < 20) consoleErrors.push(String(e.text ?? "").slice(0, 300));
       } else if (method === "Page.loadEventFired") loaded?.();
     });
     const page = (method: string, params: Record<string, unknown> = {}, timeoutMs?: number) => cdp.send(method, params, sessionId, timeoutMs);
@@ -3594,7 +3655,7 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<HtmlCaptureRes
         o.onProgress?.(k / stillFrames.length);
       }
       await domCheck();
-      return { frames: stillFrames.length, violations, consoleErrors };
+      return { frames: stillFrames.length, violations, consoleErrors, sandboxed: sandbox };
     }
 
     const ff = spawn(ffmpegPath(), htmlCaptureFfmpegArgs({ fps: o.fps, frames: o.totalFrames, output: o.output, burn: o.burn }), { cwd: o.cwd, stdio: ["pipe", "ignore", "pipe"] });
@@ -3640,7 +3701,7 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<HtmlCaptureRes
     await ffDone;
     await domCheck();
     o.onProgress?.(1);
-    return { frames: o.totalFrames, violations, consoleErrors };
+    return { frames: o.totalFrames, violations, consoleErrors, sandboxed: sandbox };
   } catch (err) {
     ffmpeg?.kill("SIGKILL");
     if (o.signal.aborted) throw new Error("Aborted");
@@ -4156,6 +4217,7 @@ async function previewFramesHandler(ctx: JobContext): Promise<Record<string, unk
     drawsCaptions: pack.drawsCaptions,
     consoleErrors: got.consoleErrors,
     blocked: got.violations,
+    ...(pageRoot ? { sandboxed: got.sandboxed } : {}),
   };
 }
 
@@ -5473,7 +5535,7 @@ export async function loop(opts: {
       try {
         res = await client.json<ClaimResponse>("POST", "/api/worker/claim", {
           capabilities,
-          jobTypes: advertisedJobTypes(process.env, opts.mode),
+          jobTypes: claimJobTypes(advertisedJobTypes(process.env, opts.mode), capabilities),
           mode: opts.mode,
           version: VERSION,
           waitSeconds,

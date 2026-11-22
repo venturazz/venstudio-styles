@@ -417,6 +417,8 @@ test("html-design: research only, html-capture only, at most trial, the owner re
     s.renderer = { engine, minWorkerVersion: "0.11.0", composition: engine === "remotion-2d" ? "x-y" : null };
     assert.ok(has(V.validateStyle(s), /workflow.recipe html-design needs engine html-capture/), engine);
   }
+  // Worker 0.11.0 or later: an older worker would draw the reference page instead of the run's page.
+  assert.ok(has(V.validateStyle({ ...clone(d), renderer: { ...d.renderer, minWorkerVersion: "0.10.0" } }), /minWorkerVersion must be 0\.11\.0 or later for html-design/));
   // The owner reviews the page and the stills every time.
   assert.ok(has(V.validateStyle({ ...clone(d), workflow: { recipe: "html-design" } }), /must name html-design and preview.*missing html-design, preview/));
   assert.ok(has(V.validateStyle({ ...clone(d), workflow: { recipe: "html-design", review: ["html-design"] } }), /missing preview/));
