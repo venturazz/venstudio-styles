@@ -11,7 +11,7 @@ copies differ.
 # Vendored html-capture runtime
 
 `runtime/html-capture/venstudio-worker.ts` is a byte-for-byte copy of venstudio's `apps/worker/venstudio-worker.ts`
-(worker 0.10.0, branch `feat/renderers`). CI uses only its `capture-html` command, which renders an html-capture
+(worker 0.11.0, branch `feat/html-design`: page mode for html-design packs and preview-frames). CI uses only its `capture-html` command, which renders an html-capture
 pack's fixture exactly as a worker draws it: the same loopback server, request blocking, virtual clock, Chromium
 flags and ffmpeg encode. It needs Node 22.18 or later (type stripping) and no packages; the browser is the Chrome
 Headless Shell of the assembled Remotion project (`npx remotion browser ensure`).

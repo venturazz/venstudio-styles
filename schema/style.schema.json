@@ -650,7 +650,7 @@
             "engine-project",
             "clip-sequence"
           ],
-          "description": "The recipe. html-design, engine-project and clip-sequence are reserved names the validator refuses until they are built."
+          "description": "The recipe. engine-project and clip-sequence are reserved names the validator refuses until they are built; html-design is research only (html-capture, at most trial, review must name html-design and preview)."
         },
         "review": {
           "type": "array",
@@ -663,6 +663,8 @@
               "storyboard",
               "scene-spec",
               "skill-brief",
+              "html-design",
+              "preview",
               "assets",
               "voice",
               "render",
@@ -670,6 +672,47 @@
             ]
           },
           "description": "Stages of this pack's workflow where the owner always reviews, whatever the autonomy level."
+        }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brief",
+        "palette",
+        "typography",
+        "layout"
+      ],
+      "description": "html-design packs only (and required there): the brief Hermes designs each page from.",
+      "properties": {
+        "brief": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "What the page is for and how it moves."
+        },
+        "palette": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          },
+          "description": "Colours, #RRGGBB."
+        },
+        "typography": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600,
+          "description": "The type to use: the pack's vendored fonts or the run's font."
+        },
+        "layout": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "Safe areas and layout rules (captions are burned below them)."
         }
       }
     }

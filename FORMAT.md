@@ -38,6 +38,7 @@ packs/<id>/
 | `curation` | The record: `{ date, kind, ref, result, notes }`, kind one of `ci-render`, `trial-run`, `qc`, `hermes-review`, `owner-review`, `research-source`; result one of `pass`, `fail`, `approved`, `rejected`, `note`. |
 | `hermes` | Engine `hermes` only, optional: the Hermes skill the portal names in the render request. `skill` (as invoked, `/graph`), `aliases` (other names of the same skill), `mode` (`spec`: a quick skill from a small JSON spec; `project`: a full project with its own voice and caption timing), `voice` (`run`, the default: the run's voice stage records the narration the skill uses; `skill`: the skill makes its own voice, `project` mode only, and the run has no voice stage), `input` (how the run's skill brief, narration and captions map to the skill's input; a `project` skill must say how the run's narration is used), `output` (what Hermes hands back), `variantOf` (packs in this repo this is the Hermes research variant of). |
 | `workflow` | Optional: the workflow a run of this pack goes through (below). `recipe` (one of the recipes below) and `review` (stages of this pack's list where the owner always reviews, whatever the autonomy level). Without it the recipe is inferred. |
+| `design` | `html-design` packs only, and required there: the brief Hermes designs each page from. `brief` (what the page is for and how it moves), `palette` (2 to 12 colours, `#RRGGBB`), `typography` (the pack's vendored fonts or the run's font), `layout` (safe areas and layout rules). |
 
 Rules the validator applies beyond the shape:
 
@@ -52,6 +53,11 @@ Rules the validator applies beyond the shape:
   keeps the pack at `draft` (or `retired`).
 - `hermes` is research only (owner decision): such a pack is at most `trial`, never `proven` or `listed`. It has no
   render project and no `ci-render` entry (there is no Hermes in CI).
+- `workflow.recipe` `html-design` is research only too (owner decision: Hermes writes the page, the one place
+  model-written code runs): engine `html-capture` only, `minWorkerVersion` 0.11.0 or later, at most `trial`, a `design` block, `workflow.review` naming
+  `html-design` and `preview`, and for `lab` or `trial` a `research-source` entry (the research and the owner decision
+  it is built from) or a real `ci-render` with result `pass`. No GSAP under `render/vendor/` until the owner approves
+  its licence.
 - `hermes` (the block) is only for engine `hermes`; `variantOf` must name packs in this repo.
 - `render/` exists exactly when the engine has a render project (`remotion-2d`, `html-capture`).
   - remotion-2d: source only (`.ts`, `.tsx`, `.json`, `.css`, `.svg`); `render/index.tsx` exports the composition
@@ -74,22 +80,25 @@ known kinds needs no engine change. The table is `RECIPES` in `tools/validate.mj
 | Recipe | Stages | For |
 | --- | --- | --- |
 | `image-sequence` | idea, research, script, storyboard, assets, voice, render, qc | Packs that need a picture per shot (`contract.assets.model` `image-per-shot` or `plates-and-diagrams`): the stills packs and `explainer-flat-vector`. The original pipeline: the storyboard writes an image prompt per shot and the assets stage makes one picture per shot. |
-| `scene-spec` | idea, research, script, scene-spec, voice, render, qc | Data-driven pages: engine `html-capture`, or `remotion-2d` with `contract.onScreen.elementAnimation` true. Research asks for the real numbers the spec needs, with sources. The scene-spec stage asks Hermes (through the gate, as checked JSON) for scenes with seconds, beat, on-screen elements (with value, series and labels), motion tokens and a caption, checked against this pack's contract (elements, motion tokens, pacing, narration coverage). Every number cites the research note it comes from, and a number no sourced note contains fails the check ("never invent data"). No picture is generated: the spec is the scene plan the page draws. |
+| `scene-spec` | idea, research, script, scene-spec, preview, voice, render, qc | Data-driven pages: engine `html-capture`, or `remotion-2d` with `contract.onScreen.elementAnimation` true. Research asks for the real numbers the spec needs, with sources. The scene-spec stage asks Hermes (through the gate, as checked JSON) for scenes with seconds, beat, on-screen elements (with value, series and labels), motion tokens and a caption, checked against this pack's contract (elements, motion tokens, pacing, narration coverage). Every number cites the research note it comes from, and a number no sourced note contains fails the check ("never invent data"). No picture is generated: the spec is the scene plan the page draws. The preview stage has a worker (0.11.0+, `preview-frames`) take still frames of the pack's page with the run's props; the owner approves the look or sends a note back to the scene spec. Without such a worker the card says so and the owner can continue from the spec text. |
 | `hermes-skill` | idea, research, script, skill-brief, voice, render, qc | Engine `hermes` (research only); the packs here review the brief every time (`review: ["skill-brief"]`). The skill-brief stage has Hermes turn the approved script into the input the pack's skill expects (`hermes.input`): one JSON spec per shot for a `spec` skill, a text project brief for a `project` skill. The voice stage is left out when `hermes.voice` is `skill`; the video's provenance then records the voice backend Hermes names, and that backend's provider terms are checked like any voice. No picture is generated. |
-| `html-design` | reserved | Hermes would write the page for each video (research only) with a frame preview gate. Not built: it needs the owner's explicit approval first. The validator refuses it. |
+| `html-design` | idea, research, script, html-design, preview, voice, render, qc | **Research only** (owner decision), engine `html-capture`. The html-design stage asks Hermes (through the gate, as checked JSON) for one self-contained `index.html` (inline CSS and JS, plus a few small JS, CSS or SVG files at most), a short design note and a scene list that maps the script's beats to times, from the pack's `design` brief and contract. The portal checks the page before anything runs (size, files, no network URL anywhere, no frames, forms, workers, `fetch`, `eval` and the like, the `window.VENSTUDIO` contract, fonts and libraries only from this pack's `render/` or the run's font, no GSAP) and sends the issues back to Hermes. The preview stage takes still frames of the page; the owner always reviews the page and the stills, then the worker captures the page under a strict Content-Security-Policy. Every run is a trial and is never published. |
 | `engine-project` | reserved | A scene-engine project (Godot, Manim, Blender) built per video. Not built; refused. |
 | `clip-sequence` | reserved | A video clip per shot instead of a picture. Not built; refused. |
 
 Rules the validator applies:
 
-- `workflow.recipe` is a known recipe, and a built one (the reserved names are refused, by name).
+- `workflow.recipe` is a known recipe, and a built one (the reserved names `engine-project` and `clip-sequence` are
+  refused, by name).
 - The recipe fits the pack: `image-sequence` needs `contract.assets.model` `image-per-shot` or `plates-and-diagrams`;
   `scene-spec` needs engine `html-capture`, or `remotion-2d` with element animation; `hermes-skill` needs engine
-  `hermes`. `hermes.voice: "skill"` only goes with `hermes-skill` and `project` mode.
+  `hermes`; `html-design` needs engine `html-capture`. `hermes.voice: "skill"` only goes with `hermes-skill` and
+  `project` mode.
 - `workflow.review` names known stage kinds of this pack's own list (no repeats). No other override exists.
 
 Without `workflow`, the recipe is inferred from the engine and asset model: `hermes` gives `hermes-skill`,
-`html-capture` with plates and diagrams gives `scene-spec`, anything else gives `image-sequence`. Every pack in this
+`html-capture` with plates and diagrams gives `scene-spec`, anything else gives `image-sequence`. `html-design` is never
+inferred: a pack runs Hermes-written pages only when it names the recipe. Every pack in this
 repo names its recipe. Adding `workflow` did not raise `format`: an older validator refuses the field by name rather
 than misreading it, and an older portal runs every pack with the original pipeline.
 
@@ -136,6 +145,18 @@ window.VENSTUDIO = {
 - Captions are drawn by the page when `drawsCaptions` is true; otherwise ffmpeg burns them with the job's caption
   style. The narration and the audio mix are always added by the worker afterwards.
 - Muse limits apply: one page, 30 s at most per frame, a time limit scaled to the video's duration.
+
+### Pages Hermes writes (html-design)
+
+A run of an `html-design` pack uploads the page Hermes wrote as a job input. The worker (0.11.0+) serves it as
+`page/index.html`, next to `../pack/` (this pack's `render/` files, as installed and digest-checked) and `../in/` (the
+run's media: the plate, the font), and nothing else; every response carries
+`Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:`
+(plus `worker-src`, `child-src`, `frame-src`, `object-src`, `connect-src`, `manifest-src`, `base-uri` and `form-action`
+all `'none'`). Chromium's own process sandbox is on wherever the worker's host allows it. The browser profile is a fresh temporary folder with no extensions, each
+frame has a time limit and the whole capture a frame budget, and a page that throws in `init` or `renderFrame`, or
+tries the network in any way, fails the job by name. The pack's `render/index.html` is a reference page that follows
+the same rules; CI renders it from the fixture like any html-capture page.
 
 CI renders every html-capture pack's fixture with `runtime/html-capture/venstudio-worker.ts capture-html` and
 `tools/check-video.mjs` checks the result against `fixtures/expect.json` (size, fps, duration, exact frame count).

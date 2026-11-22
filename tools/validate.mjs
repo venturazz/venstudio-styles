@@ -72,9 +72,9 @@ export const HERMES_VOICES = ["run", "skill"];
  * kinds needs no engine change. Recipes marked implemented: false are reserved names: the validator refuses them, so a
  * pack cannot ask for a workflow the studio does not run.
  */
-export const STAGE_KINDS = ["idea", "research", "script", "storyboard", "scene-spec", "skill-brief", "assets", "voice", "render", "qc"];
+export const STAGE_KINDS = ["idea", "research", "script", "storyboard", "scene-spec", "skill-brief", "html-design", "preview", "assets", "voice", "render", "qc"];
 /** Stage kinds reserved for recipes that are not built yet. No pack may name them. */
-export const RESERVED_STAGE_KINDS = ["page-design", "frame-preview", "project-build", "clips"];
+export const RESERVED_STAGE_KINDS = ["project-build", "clips"];
 export const RECIPES = {
   "image-sequence": {
     implemented: true,
@@ -84,9 +84,9 @@ export const RECIPES = {
   },
   "scene-spec": {
     implemented: true,
-    stages: ["idea", "research", "script", "scene-spec", "voice", "render", "qc"],
+    stages: ["idea", "research", "script", "scene-spec", "preview", "voice", "render", "qc"],
     optional: [],
-    summary: "Data-driven: Hermes writes a scene spec (seconds, beat, on-screen elements with sourced numbers, motion tokens, captions) that the page renders directly. No pictures are generated.",
+    summary: "Data-driven: Hermes writes a scene spec (seconds, beat, on-screen elements with sourced numbers, motion tokens, captions) that the page renders directly, and the owner sees still frames of the page before the voice and the render. No pictures are generated.",
   },
   "hermes-skill": {
     implemented: true,
@@ -95,10 +95,10 @@ export const RECIPES = {
     summary: "Research only: Hermes turns the approved script into the input the pack's skill expects, then renders with that skill. No pictures are generated; the voice stage is left out when the skill makes its own voice (hermes.voice skill).",
   },
   "html-design": {
-    implemented: false,
-    stages: ["idea", "research", "script", "page-design", "voice", "frame-preview", "render", "qc"],
+    implemented: true,
+    stages: ["idea", "research", "script", "html-design", "preview", "voice", "render", "qc"],
     optional: [],
-    summary: "Reserved, not built: Hermes would write the page for each video (research only), with a frame preview gate. Needs the owner's explicit approval before it is built.",
+    summary: "Research only (owner decision): Hermes writes the HTML page for each video (one self-contained index.html, checked before anything runs), the owner approves still frames of it, then the worker captures it with html-capture. Always a trial, never published.",
   },
   "engine-project": {
     implemented: false,
@@ -115,6 +115,16 @@ export const RECIPES = {
 };
 export const RECIPE_IDS = Object.keys(RECIPES);
 export const IMPLEMENTED_RECIPES = RECIPE_IDS.filter((r) => RECIPES[r].implemented);
+/**
+ * Research-only recipes (owner decision): html-design runs model-written page code, so a pack with it is at most trial,
+ * runs only on engine html-capture, and its owner reviews the page and the still frames every time. Its lab and trial
+ * evidence is a research-source entry (the research and the owner decision it is built from) or a real ci-render of its
+ * reference page: Hermes writes the page per video, so no CI render stands for the pages runs will draw.
+ */
+export const RESEARCH_RECIPES = ["html-design"];
+/** Stages an html-design pack's workflow.review must name: the owner checks the page and its still frames every time. */
+export const HTML_DESIGN_REVIEW = ["html-design", "preview"];
+const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 
 /**
  * The recipe of a pack: its `workflow.recipe`, or the one its engine and asset model imply when it has none (engine
@@ -148,9 +158,10 @@ const PATH_RE = /^[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$/;
 /** A Hermes skill as it is invoked, e.g. "/graph". */
 const SKILL_RE = /^\/[a-z0-9][a-z0-9-]{0,62}$/;
 
-const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "family", "formats", "renderer", "contract", "portal", "fixture", "provenance", "curation", "hermes", "workflow"];
+const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "family", "formats", "renderer", "contract", "portal", "fixture", "provenance", "curation", "hermes", "workflow", "design"];
 /** Top-level fields a pack may leave out. */
-export const OPTIONAL_TOP_KEYS = ["hermes", "workflow"];
+export const OPTIONAL_TOP_KEYS = ["hermes", "workflow", "design"];
+const DESIGN_KEYS = ["brief", "palette", "typography", "layout"];
 const HERMES_KEYS = ["skill", "aliases", "mode", "voice", "input", "output", "variantOf"];
 const WORKFLOW_KEYS = ["recipe", "review"];
 
@@ -277,6 +288,9 @@ export function validateStyle(style, { dirName } = {}) {
     if (RESEARCH_ENGINES.includes(r.engine) && STATUSES.includes(style.status) && !RESEARCH_MAX_STATUSES.includes(style.status)) {
       issues.push(`${r.engine} renders are research only (owner decision): the pack can be at most trial, never ${style.status}`);
     }
+    if (RESEARCH_RECIPES.includes(recipeOf(style)) && STATUSES.includes(style.status) && !RESEARCH_MAX_STATUSES.includes(style.status)) {
+      issues.push(`workflow.recipe ${recipeOf(style)} is research only (owner decision: Hermes writes the page): the pack can be at most trial, never ${style.status}`);
+    }
   }
 
   const c = style.contract;
@@ -362,6 +376,12 @@ export function validateStyle(style, { dirName } = {}) {
 
   if (style.workflow !== undefined) for (const m of validateWorkflow(style)) issues.push(m);
 
+  const designed = RESEARCH_RECIPES.includes(recipeOf(style));
+  if (style.design !== undefined) {
+    if (!designed) issues.push(`design is the brief Hermes designs each page from; it is only for workflow.recipe ${RESEARCH_RECIPES.join(" or ")}`);
+    for (const m of validateDesignBlock(style.design)) issues.push(m);
+  } else if (designed) issues.push("an html-design pack needs a design block (brief, palette, typography, layout): it is what Hermes designs each page from");
+
   if (!Array.isArray(style.provenance) || style.provenance.length === 0) issues.push("provenance must list at least one source the look was learned from");
   else {
     style.provenance.forEach((s, i) => {
@@ -389,14 +409,19 @@ export function validateStyle(style, { dirName } = {}) {
     });
     const has = (kind, results) => style.curation.some((e) => isRecord(e) && e.kind === kind && results.includes(e.result));
     const research = isRecord(style.renderer) && RESEARCH_ENGINES.includes(style.renderer.engine);
-    if (RENDERED_STATUSES.includes(style.status) && !research && !has("ci-render", ["pass"])) issues.push(`status ${style.status} needs a passing ci-render entry in curation`);
+    // An html-design pack: Hermes writes each page, so either evidence counts, a real ci-render of its reference page or
+    // the research-source it is built from. Neither may be invented.
+    if (RENDERED_STATUSES.includes(style.status) && designed && !has("ci-render", ["pass"]) && !has("research-source", ["pass"])) {
+      issues.push(`status ${style.status} for an html-design pack needs a research-source entry (the research and the owner decision it is built from) or a real ci-render entry with result "pass" in curation`);
+    }
+    if (RENDERED_STATUSES.includes(style.status) && !research && !designed && !has("ci-render", ["pass"])) issues.push(`status ${style.status} needs a passing ci-render entry in curation`);
     // A hermes pack has no CI render (no Hermes in CI): lab and trial cite the source it comes from and the report that
     // it renders in Hermes. That evidence is for hermes packs only; a pack VenStudio renders itself needs a real ci-render.
     if (RENDERED_STATUSES.includes(style.status) && research && !has("research-source", ["pass"])) {
       issues.push(`status ${style.status} for a ${style.renderer.engine} pack needs a research-source entry with result "pass" in curation (the source and the report that it renders in Hermes); there is no CI render for it`);
     }
-    if (!research && style.curation.some((e) => isRecord(e) && e.kind === "research-source")) {
-      issues.push(`curation kind research-source is evidence for ${RESEARCH_ENGINES.join(" or ")} packs only; a pack VenStudio renders needs a passing ci-render`);
+    if (!research && !designed && style.curation.some((e) => isRecord(e) && e.kind === "research-source")) {
+      issues.push(`curation kind research-source is evidence for ${RESEARCH_ENGINES.join(" or ")} packs (and ${RESEARCH_RECIPES.join(", ")} packs) only; a pack VenStudio renders needs a passing ci-render`);
     }
     if (OWNER_STATUSES.includes(style.status) && !has("owner-review", ["approved"])) issues.push(`status ${style.status} can only be set by an owner-approved PR: add the owner-review entry with result "approved"`);
     if (OWNER_STATUSES.includes(style.status) && !has("trial-run", ["pass"])) issues.push(`status ${style.status} needs the trial-run entries copied from the portal's Styles page`);
@@ -425,6 +450,20 @@ export function validateWorkflow(style) {
   if (w.recipe === "scene-spec" && !(engine === "html-capture" || (engine === "remotion-2d" && animates))) {
     issues.push(`workflow.recipe scene-spec needs engine html-capture, or remotion-2d with contract.onScreen.elementAnimation true (the page draws the spec); this pack renders with ${String(engine)}${engine === "remotion-2d" ? " without element animation" : ""}`);
   }
+  if (w.recipe === "html-design" && engine !== "html-capture") {
+    issues.push(`workflow.recipe html-design needs engine html-capture (the worker captures the page Hermes writes); this pack renders with ${String(engine)}`);
+  }
+  if (w.recipe === "html-design") {
+    // Worker 0.11.0 is the first that renders an uploaded page (its CSP and guard) and takes stills; an older worker would
+    // ignore the page and draw the pack's reference page instead, so it must never report such a pack.
+    const v = isRecord(style.renderer) ? style.renderer.minWorkerVersion : undefined;
+    if (typeof v !== "string" || !WORKER_VERSION_RE.test(v) || compareVersions(v, "0.11.0") < 0) {
+      issues.push("renderer.minWorkerVersion must be 0.11.0 or later for html-design (the first worker that renders a page uploaded with the job and takes still frames)");
+    }
+    const review = Array.isArray(w.review) ? w.review : [];
+    const missing = HTML_DESIGN_REVIEW.filter((k) => !review.includes(k));
+    if (missing.length > 0) issues.push(`workflow.review of an html-design pack must name ${HTML_DESIGN_REVIEW.join(" and ")}: the owner checks the page and its still frames every time (missing ${missing.join(", ")})`);
+  }
   if (w.recipe === "hermes-skill" && !RESEARCH_ENGINES.includes(engine)) {
     issues.push(`workflow.recipe hermes-skill needs engine ${RESEARCH_ENGINES.join(" or ")} (Hermes renders with the skill); this pack renders with ${String(engine)}`);
   }
@@ -444,6 +483,20 @@ export function validateWorkflow(style) {
       }
     }
   }
+  return issues;
+}
+
+/** Validates the design block of an html-design pack: the brief, colours, type and layout Hermes designs each page from. */
+export function validateDesignBlock(d) {
+  const issues = [];
+  if (!isRecord(d)) return ["design must be an object (brief, palette, typography, layout)"];
+  checkKeys(d, DESIGN_KEYS, "design", issues);
+  if (!isText(d.brief)) issues.push(`design.brief must say what the page is for and how it moves (up to ${LIMITS.text} characters)`);
+  if (!Array.isArray(d.palette) || d.palette.length < 2 || d.palette.length > 12 || !d.palette.every((c) => typeof c === "string" && HEX_RE.test(c))) {
+    issues.push('design.palette must be 2 to 12 colours written "#RRGGBB"');
+  }
+  if (!isText(d.typography, 600)) issues.push("design.typography must name the type to use (the pack's vendored fonts or the run's font) in up to 600 characters");
+  if (!isText(d.layout, 1000)) issues.push("design.layout must give the safe areas and layout rules in up to 1000 characters");
   return issues;
 }
 
@@ -573,6 +626,10 @@ export function validatePackDir(dir) {
     }
     // A vendored library sits in render/vendor/<name>/ with its licence beside it.
     const vendors = new Set(renderFiles.filter((r) => r.startsWith("render/vendor/")).map((r) => r.split("/")[2]));
+    // GSAP's licence is not approved by the owner, so a page Hermes writes may not reach for it (current packs use plain JS).
+    if (style && RESEARCH_RECIPES.includes(recipeOf(style))) {
+      for (const v of vendors) if (/gsap/i.test(v)) issues.push(at(`render/vendor/${v}/: GSAP is not available to html-design pages until the owner approves its licence; use plain JavaScript`));
+    }
     for (const v of vendors) {
       if (!renderFiles.some((r) => r.startsWith(`render/vendor/${v}/`) && /(^|\/)LICEN[CS]E[^/]*$/.test(r))) {
         issues.push(at(`render/vendor/${v}/ has no LICENSE file: a vendored library carries its licence`));

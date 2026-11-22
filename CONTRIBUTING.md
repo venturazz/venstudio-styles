@@ -10,8 +10,8 @@ Hermes and Kiro work here through pull requests. The owner merges. Nothing reach
 2. **Draft.** A PR adds `packs/<id>/` with `style.json` at `status: "draft"`, a README, a fixture, a render project
    if the engine needs one, every source in `provenance` with its licence, and the `workflow` its runs follow
    (FORMAT.md, Workflows: `image-sequence` for a picture per shot, `scene-spec` for a page drawn from data,
-   `hermes-skill` for a Hermes skill). A reserved recipe (`html-design`, `engine-project`, `clip-sequence`) is not
-   built and is refused; `html-design` needs the owner's explicit approval before it is built.
+   `hermes-skill` for a Hermes skill, `html-design` for a page Hermes writes per video, research only). A reserved
+   recipe (`engine-project`, `clip-sequence`) is not built and is refused.
 3. **CI → lab.** This repo's CI validates the pack and renders what it can (the Remotion compositions, and every
    html-capture fixture, checked for size, fps, duration and frame count; stills packs are parameters only; hermes
    packs are never rendered here). Once the fixture renders in venstudio's CI too (after a sync, below), a PR sets
@@ -33,6 +33,15 @@ URL at its commit and the skill's path) and the report that it renders in Hermes
 owner's report that the repository is installed in Hermes and works). The validator accepts `research-source` only for
 `hermes` packs; every other pack still needs a passing `ci-render` to leave `draft`. Name the skill in the pack's
 `hermes` block so the portal's render request carries it.
+
+An `html-design` pack (Hermes writes the page for each video; the owner approved building it for research only) is
+research only in the same way: engine `html-capture`, at most `trial`, every run a trial, never published. It carries a
+`design` block (the brief, palette, typography and layout Hermes designs from, with its sources in `provenance`),
+`workflow.review: ["html-design", "preview"]`, and a reference page in `render/index.html` that follows the page rules
+(FORMAT.md, "Pages Hermes writes"); fonts and libraries a page may use are vendored in `render/` and referenced as
+`../pack/<path>`. Do not vendor GSAP: its licence is not approved by the owner. For `lab` or `trial`, add a
+`research-source` entry with result `pass` (the research and the owner decision the brief is built from), or a
+`ci-render` entry only for a real CI run; never invent one.
 
 `retired` takes a pack out of New Video; it stays in the repo so old runs remain explainable.
 
