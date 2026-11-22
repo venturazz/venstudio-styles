@@ -25,11 +25,23 @@ export const OWNER_STATUSES = ["proven", "listed"];
 export const RENDERED_STATUSES = ["lab", "trial", "proven", "listed"];
 
 /** Renderer engines, the keys of ENGINES in venstudio apps/portal/lib/studio/catalog.ts (a venstudio test checks). */
-export const ENGINES = ["ffmpeg-stills", "remotion-2d", "sprite-rig", "manim", "godot-2d", "remotion-3d", "godot-3d", "blender-cycles", "provider-video"];
-/** Engines a VenStudio worker can run today. A pack for any other engine stays draft (or retired). */
-export const RUNNABLE_ENGINES = ["ffmpeg-stills", "remotion-2d"];
-/** Engines whose packs carry a render project in render/ (and a composition name). */
-export const PROJECT_ENGINES = ["remotion-2d"];
+export const ENGINES = ["ffmpeg-stills", "remotion-2d", "html-capture", "hermes", "sprite-rig", "manim", "godot-2d", "remotion-3d", "godot-3d", "blender-cycles", "provider-video"];
+/** Engines VenStudio can run today (hermes by the portal, the rest by a worker). A pack for any other engine stays draft (or retired). */
+export const RUNNABLE_ENGINES = ["ffmpeg-stills", "remotion-2d", "html-capture", "hermes"];
+/** Engines whose packs carry a render project in render/. */
+export const PROJECT_ENGINES = ["remotion-2d", "html-capture"];
+/** Engines whose render project is a Remotion composition named in renderer.composition. */
+export const COMPOSITION_ENGINES = ["remotion-2d"];
+/**
+ * Research-only engines (owner decision): Hermes renders with its own tools. Never above trial, never rendered in CI
+ * (there is no Hermes there), so lab and trial do not need a ci-render entry.
+ */
+export const RESEARCH_ENGINES = ["hermes"];
+export const RESEARCH_MAX_STATUSES = ["draft", "lab", "trial", "retired"];
+/** Files an html-capture render project may hold: text only, because the worker bundle carries text. */
+export const HTML_RENDER_FILE_RE = /\.(html|js|mjs|css|json|svg|txt|md)$|(^|\/)LICEN[CS]E[^/]*$|(^|\/)NOTICE[^/]*$/;
+/** A remote reference in a page or a style sheet: the page could not render it, because html-capture blocks the network. */
+const REMOTE_REF_RE = /(?:\bsrc|\bhref|@import|url\()\s*=?\s*["']?\s*(?:https?:)?\/\/[^"')\s]/i;
 
 export const FAMILIES = ["explainer", "documentary", "narrative", "animation-2d", "animation-2.5d", "animation-3d", "motion-graphics", "game-style", "data-list", "ambient"];
 export const FORMATS = ["short", "long"];
@@ -61,6 +73,27 @@ const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "f
 const isRecord = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const isText = (v, max = LIMITS.text) => typeof v === "string" && v.trim().length > 0 && v.length <= max;
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+
+/** Compares dotted versions numerically (0.10.0 > 0.9.0). */
+export function compareVersions(a, b) {
+  const pa = String(a).split(".").map(Number);
+  const pb = String(b).split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d < 0 ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * Digest of an html-capture pack's render project as a worker installs it (html/<id>/): packDigest over the render/
+ * files with the "render/" prefix removed. venstudio's bundle builder and worker compute the same.
+ */
+export function renderDigest(files) {
+  const inner = {};
+  for (const [p, sha] of Object.entries(files)) if (p.startsWith("render/")) inner[p.slice("render/".length)] = sha;
+  return packDigest(inner);
+}
 
 export function sha256Hex(data) {
   return createHash("sha256").update(data).digest("hex");
@@ -142,14 +175,23 @@ export function validateStyle(style, { dirName } = {}) {
   const r = style.renderer;
   if (!isRecord(r)) issues.push("renderer must be an object");
   else {
-    checkKeys(r, ["engine", "minWorkerVersion", "composition"], "renderer", issues);
+    checkKeys(r, ["engine", "minWorkerVersion", "composition", "drawsCaptions"], "renderer", issues);
     if (!ENGINES.includes(r.engine)) issues.push(`renderer.engine must be one of ${ENGINES.join(", ")}`);
     if (typeof r.minWorkerVersion !== "string" || !WORKER_VERSION_RE.test(r.minWorkerVersion)) issues.push("renderer.minWorkerVersion must be a dotted version like 0.9.0");
-    if (PROJECT_ENGINES.includes(r.engine)) {
+    if (COMPOSITION_ENGINES.includes(r.engine)) {
       if (typeof r.composition !== "string" || !ID_RE.test(r.composition)) issues.push(`renderer.composition must name the ${r.engine} composition (lowercase, dashes)`);
-    } else if (r.composition !== null) issues.push(`renderer.composition must be null for ${String(r.engine)} (it has no render project)`);
+    } else if (r.composition !== null) issues.push(`renderer.composition must be null for ${String(r.engine)} (it has no Remotion composition)`);
+    if (r.engine === "html-capture") {
+      if (typeof r.drawsCaptions !== "boolean") issues.push("renderer.drawsCaptions must be true (the template draws the captions it is given) or false (the worker burns them)");
+      if (typeof r.minWorkerVersion === "string" && WORKER_VERSION_RE.test(r.minWorkerVersion) && compareVersions(r.minWorkerVersion, "0.10.0") < 0) {
+        issues.push("renderer.minWorkerVersion must be 0.10.0 or later for html-capture (the first worker with the renderer)");
+      }
+    } else if (r.drawsCaptions !== undefined) issues.push("renderer.drawsCaptions is only for html-capture");
     if (ENGINES.includes(r.engine) && !RUNNABLE_ENGINES.includes(r.engine) && !["draft", "retired"].includes(style.status)) {
       issues.push(`no worker can run ${r.engine} yet, so the pack can only be draft (or retired)`);
+    }
+    if (RESEARCH_ENGINES.includes(r.engine) && STATUSES.includes(style.status) && !RESEARCH_MAX_STATUSES.includes(style.status)) {
+      issues.push(`${r.engine} renders are research only (owner decision): the pack can be at most trial, never ${style.status}`);
     }
   }
 
@@ -254,7 +296,8 @@ export function validateStyle(style, { dirName } = {}) {
       if (typeof e.notes !== "string" || e.notes.length > LIMITS.text) issues.push(`${at}.notes must be a text (may be empty)`);
     });
     const has = (kind, results) => style.curation.some((e) => isRecord(e) && e.kind === kind && results.includes(e.result));
-    if (RENDERED_STATUSES.includes(style.status) && !has("ci-render", ["pass"])) issues.push(`status ${style.status} needs a passing ci-render entry in curation`);
+    const research = isRecord(style.renderer) && RESEARCH_ENGINES.includes(style.renderer.engine);
+    if (RENDERED_STATUSES.includes(style.status) && !research && !has("ci-render", ["pass"])) issues.push(`status ${style.status} needs a passing ci-render entry in curation`);
     if (OWNER_STATUSES.includes(style.status) && !has("owner-review", ["approved"])) issues.push(`status ${style.status} can only be set by an owner-approved PR: add the owner-review entry with result "approved"`);
     if (OWNER_STATUSES.includes(style.status) && !has("trial-run", ["pass"])) issues.push(`status ${style.status} needs the trial-run entries copied from the portal's Styles page`);
   }
@@ -355,7 +398,22 @@ export function validatePackDir(dir) {
 
   const engine = isRecord(style?.renderer) ? style.renderer.engine : undefined;
   const renderFiles = names.filter((n) => n.startsWith("render/"));
-  if (PROJECT_ENGINES.includes(engine)) {
+  if (engine === "html-capture") {
+    if (read("render/index.html") === null) issues.push(at("render/index.html is missing (the page that defines window.VENSTUDIO)"));
+    for (const rel of renderFiles) {
+      if (!HTML_RENDER_FILE_RE.test(rel)) issues.push(at(`${rel}: an html-capture project holds text files only (.html, .js, .mjs, .css, .json, .svg, .txt, .md, LICENSE, NOTICE)`));
+      if (/\.(html|css)$/.test(rel) && REMOTE_REF_RE.test(read(rel) ?? "")) {
+        issues.push(at(`${rel} loads something from the network; html-capture pages render offline, so vendor the file into render/`));
+      }
+    }
+    // A vendored library sits in render/vendor/<name>/ with its licence beside it.
+    const vendors = new Set(renderFiles.filter((r) => r.startsWith("render/vendor/")).map((r) => r.split("/")[2]));
+    for (const v of vendors) {
+      if (!renderFiles.some((r) => r.startsWith(`render/vendor/${v}/`) && /(^|\/)LICEN[CS]E[^/]*$/.test(r))) {
+        issues.push(at(`render/vendor/${v}/ has no LICENSE file: a vendored library carries its licence`));
+      }
+    }
+  } else if (PROJECT_ENGINES.includes(engine)) {
     const index = read("render/index.tsx");
     if (index === null) issues.push(at("render/index.tsx is missing (it exports the composition)"));
     else if (typeof style.renderer.composition === "string" && !index.includes(`id: "${style.renderer.composition}"`)) {

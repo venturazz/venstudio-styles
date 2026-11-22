@@ -109,6 +109,8 @@
           "enum": [
             "ffmpeg-stills",
             "remotion-2d",
+            "html-capture",
+            "hermes",
             "sprite-rig",
             "manim",
             "godot-2d",
@@ -128,6 +130,10 @@
             "null"
           ],
           "description": "Required for remotion-2d; null otherwise."
+        },
+        "drawsCaptions": {
+          "type": "boolean",
+          "description": "html-capture only (required there): true when the template draws the captions it is given; false when the worker burns them with ffmpeg."
         }
       }
     },

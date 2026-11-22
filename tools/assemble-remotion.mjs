@@ -7,6 +7,8 @@
  *   <out>/src/packs/<pack id>/...       the pack's render/ files
  *   <out>/src/packs/index.ts            generated: imports each pack's `composition`
  *   <out>/src/packs/packs.json          generated: [{ id, version, composition }]
+ *   <out>/html/<pack id>/...            every html-capture pack's render/ files (the page and its vendored files)
+ *   <out>/html/packs.json               generated: [{ id, version, drawsCaptions, sha256 }] (sha256: renderDigest)
  *
  *   node tools/assemble-remotion.mjs <out dir> [--status trial,proven,listed]
  *
@@ -15,6 +17,7 @@
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { packFiles, renderDigest } from "./validate.mjs";
 
 export const RUNTIME_FILES = ["package.json", "tsconfig.json", "scripts/probe.mjs", "src/index.ts", "src/Root.tsx", "src/compositions.ts", "src/props.ts"];
 
@@ -55,6 +58,29 @@ export function remotionPacks(root, statuses = null) {
   return out;
 }
 
+/** html/packs.json: the html-capture packs a worker serves pages from. Same text as venstudio's bundle builder. */
+export function htmlPackListJson(packs) {
+  return `${JSON.stringify(byId(packs).map((p) => ({ id: p.id, version: p.version, drawsCaptions: p.drawsCaptions === true, sha256: p.sha256 })), null, 2)}\n`;
+}
+
+/** The html-capture packs under <root>/packs, optionally only those with one of `statuses`, with their renderDigest. */
+export function htmlPacks(root, statuses = null) {
+  const dir = path.join(root, "packs");
+  const out = [];
+  for (const id of readdirSync(dir).sort()) {
+    let s;
+    try {
+      s = JSON.parse(readFileSync(path.join(dir, id, "style.json"), "utf8"));
+    } catch {
+      continue;
+    }
+    if (s?.renderer?.engine !== "html-capture") continue;
+    if (statuses && !statuses.includes(s.status)) continue;
+    out.push({ id: s.id, version: s.version, drawsCaptions: s.renderer.drawsCaptions === true, sha256: renderDigest(packFiles(path.join(dir, id))), dir: path.join(dir, id, "render") });
+  }
+  return out;
+}
+
 export function assemble(root, out, statuses = null) {
   const runtime = path.join(root, "runtime", "remotion");
   rmSync(path.join(out, "src"), { recursive: true, force: true });
@@ -70,7 +96,12 @@ export function assemble(root, out, statuses = null) {
   }
   writeFileSync(path.join(out, "src", "packs", "index.ts"), packIndexSource(packs));
   writeFileSync(path.join(out, "src", "packs", "packs.json"), packListJson(packs));
-  return packs;
+  rmSync(path.join(out, "html"), { recursive: true, force: true });
+  const html = htmlPacks(root, statuses);
+  for (const p of html) cpSync(p.dir, path.join(out, "html", p.id), { recursive: true });
+  mkdirSync(path.join(out, "html"), { recursive: true });
+  writeFileSync(path.join(out, "html", "packs.json"), htmlPackListJson(html));
+  return { remotion: packs, html };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -83,6 +114,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const statuses = at > 0 ? process.argv[at + 1].split(",") : null;
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   mkdirSync(out, { recursive: true });
-  const packs = assemble(root, path.resolve(out), statuses);
-  console.log(`assembled ${packs.map((p) => `${p.id}@${p.version} (${p.composition})`).join(", ") || "no packs"} into ${out}`);
+  const { remotion, html } = assemble(root, path.resolve(out), statuses);
+  const names = [...remotion.map((p) => `${p.id}@${p.version} (${p.composition})`), ...html.map((p) => `${p.id}@${p.version} (html-capture)`)];
+  console.log(`assembled ${names.join(", ") || "no packs"} into ${out}`);
 }

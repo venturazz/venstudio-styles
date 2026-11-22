@@ -21,7 +21,9 @@ jobs:
         with:
           node-version: 24
       - name: Syntax
-        run: for f in tools/*.mjs runtime/remotion/scripts/probe.mjs; do node --check "$f"; done
+        run: |
+          for f in tools/*.mjs runtime/remotion/scripts/probe.mjs; do node --check "$f"; done
+          node runtime/html-capture/venstudio-worker.ts help > /dev/null
       - name: Validate every pack (style.json, README, provenance, fixtures, render projects)
         run: node tools/validate.mjs
       - name: Validator unit tests
@@ -38,7 +40,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Assemble the Remotion project (runtime + every remotion-2d pack, as workers get it)
+      - name: Assemble the Remotion project (runtime + every remotion-2d pack, and html/ with every html-capture pack, as workers get it)
         run: node tools/assemble-remotion.mjs "$PROJECT"
       - name: Install the runtime's packages and typecheck the packs against it
         working-directory: .remotion-project
@@ -75,6 +77,19 @@ jobs:
             size=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "out/$comp.mp4")
             echo "$comp: $size"
             [ "$size" = "1080,1920" ] || { echo "$comp rendered $size, expected 1080,1920"; exit 1; }
+          done
+      - name: Render every html-capture pack's fixture with the vendored worker, then check size, fps, duration and frame count
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          font=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+          [ -f "$font" ] || font=$(fc-list : file | sed 's/: *$//' | grep -m1 '\.ttf$')
+          mkdir -p .remotion-project/out
+          ids=$(node -e 'for (const p of JSON.parse(require("fs").readFileSync(".remotion-project/html/packs.json","utf8"))) console.log(p.id)')
+          [ -n "$ids" ] || { echo "no html-capture pack was assembled"; exit 1; }
+          for id in $ids; do
+            node runtime/html-capture/venstudio-worker.ts capture-html --pack "packs/$id" --out ".remotion-project/out/$id.mp4" --remotion "$PROJECT" --font "$font"
+            node tools/check-video.mjs ".remotion-project/out/$id.mp4" "packs/$id/fixtures/expect.json"
           done
       - name: Upload the clips
         if: always()

@@ -1,0 +1,22 @@
+{
+  "format": "short",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "engine": "hermes",
+  "transitionSec": 0,
+  "shots": [
+    { "shotRef": "shot-01", "assetId": "asset-shot-01", "seconds": 3, "motion": "zoom-in" },
+    { "shotRef": "shot-02", "assetId": "asset-shot-02", "seconds": 3, "motion": "pan-left" }
+  ],
+  "narrationAssetId": "asset-narration",
+  "narrationSec": 6,
+  "durationSec": 6,
+  "targetLufs": -14,
+  "fontAssetId": null,
+  "inputs": ["asset-shot-01", "asset-shot-02", "asset-narration"],
+  "captions": [
+    { "start": 0, "end": 3, "text": "What Hermes is asked to render." },
+    { "start": 3, "end": 6, "text": "It replies with a clip on its media host." }
+  ]
+}
