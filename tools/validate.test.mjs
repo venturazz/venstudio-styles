@@ -161,6 +161,16 @@ test("one research pack per claude-animation-skills skill, pinned, credited and 
   assert.deepEqual(load("hermes-minimalistic-graphics").hermes.variantOf, ["minimal-line-art"]);
 });
 
+test("the two adaptations are at trial on real CI renders: this repo's and venstudio's", () => {
+  for (const id of ["animated-line-graph", "minimal-line-art"]) {
+    const s = load(id);
+    assert.deepEqual([s.status, s.version], ["trial", "0.1.1"], id);
+    const refs = s.curation.filter((e) => e.kind === "ci-render" && e.result === "pass").map((e) => e.ref);
+    assert.ok(refs.some((r) => r.includes("venturazz/venstudio/actions/runs/44981421800") && r.includes("055e029")), id);
+    assert.ok(refs.some((r) => r.includes("venturazz/venstudio-styles/actions/runs/44980615532")), id);
+  }
+});
+
 test("renderDigest is packDigest over render/ without the prefix, as a worker hashes html/<id>/", () => {
   const files = { "style.json": "a".repeat(64), "render/index.html": "b".repeat(64), "render/vendor/x/LICENSE": "c".repeat(64) };
   assert.equal(V.renderDigest(files), V.packDigest({ "index.html": "b".repeat(64), "vendor/x/LICENSE": "c".repeat(64) }));

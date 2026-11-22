@@ -28,8 +28,8 @@ at runtime and needs no GitHub token. Plan: venstudio `docs/plans/style-system.m
 | `story-read-aloud` | ffmpeg-stills | trial |
 | `hermes-research-explainer` | hermes (research only) | trial |
 | `probe-line-graph` | html-capture | lab |
-| `animated-line-graph` | html-capture, adapted from claude-animation-skills `graph` (MIT) | draft |
-| `minimal-line-art` | html-capture, adapted from claude-animation-skills `minimalistic-graphics` (MIT) | draft |
+| `animated-line-graph` | html-capture, adapted from claude-animation-skills `graph` (MIT) | trial |
+| `minimal-line-art` | html-capture, adapted from claude-animation-skills `minimalistic-graphics` (MIT) | trial |
 | `hermes-breakdown` | hermes, skill `/breakdown` (research only) | trial |
 | `hermes-dan-koe` | hermes, skill `/dan-koe` (research only) | trial |
 | `hermes-graph` | hermes, skill `/graph` (research only) | trial |
