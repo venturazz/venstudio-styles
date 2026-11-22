@@ -26,6 +26,10 @@ counter that counts up. Every value on screen is a function of the frame number,
 `render/index.html`, `render/graph.css` and `render/graph.js`: original code, no vendored library. A pack that needs
 GSAP or three.js vendors the file under `render/vendor/<name>/` with its licence file (FORMAT.md).
 
+## Workflow
+
+`scene-spec` (style.json `workflow`, with `review: ["scene-spec"]`, so the owner always checks the spec): idea → research (the real numbers and facts the spec needs, each with its source) → script → scene spec → voice → render → quality check. Hermes writes the scene spec through the Hermes gate as checked JSON: per scene its seconds, beat, the on-screen elements this contract allows (plate, heading, bar, counter) with their value, series and labels, motion tokens from this contract (draw, pop, counter) and the caption. Every number cites the research note it comes from; a spec with a number no sourced note contains fails its check, by name (the skill's rule: never invent data). No pictures are generated: the page draws the spec, and the worker gets one plain-colour plate the portal makes, because the render contract carries a picture per shot. Version 0.1.1 adds the workflow; render/ is unchanged.
+
 ## Fixture
 
 `fixtures/payload.json` is a 6 s portrait job of three scenes; `fixtures/expect.json` says it must measure

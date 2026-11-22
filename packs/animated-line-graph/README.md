@@ -22,7 +22,7 @@ repository's `kit/fonts` and are under the SIL Open Font License 1.1 (`render/fo
 | Taste | one number, one line; the label is a plain noun; no callouts, growth chips or marketing words (`portal.cautions`) |
 | Captions | required (caption-spec-v1, 8% safe area), burned by the worker |
 | Audio | narrated, -14 LUFS; music self-made or licensed. The skill itself has no audio |
-| Assets | the shot pictures are planned like any plates-and-diagrams style but **not drawn**: the look is plain white or black |
+| Assets | no pictures are generated (scene-spec workflow); the worker's one plain-colour plate is **not drawn**: the look is plain white or black |
 
 ## Render project
 
@@ -36,6 +36,10 @@ not MIT and forbids use in no-code visual animation builders that compete with W
 review before any pack ships GSAP (https://gsap.com/community/standard-license/), and (3) a page without a library
 can be checked without a browser (`tools/html-pages.test.mjs`). Nothing is loaded from the network; HyperFrames is
 not used.
+
+## Workflow
+
+`scene-spec` (style.json `workflow`, with `review: ["scene-spec"]`, so the owner always checks the spec): idea → research (the real numbers and facts the spec needs, each with its source) → script → scene spec → voice → render → quality check. Hermes writes the scene spec through the Hermes gate as checked JSON: per scene its seconds, beat, the on-screen elements this contract allows (heading, counter, bar) with their value, series and labels, motion tokens from this contract (draw, counter, dim) and the caption. Every number cites the research note it comes from; a spec with a number no sourced note contains fails its check, by name (the skill's rule: never invent data). No pictures are generated: the page draws the spec, and the worker gets one plain-colour plate the portal makes, because the render contract carries a picture per shot. Version 0.1.2 adds the workflow; render/ is unchanged.
 
 ## Fixture
 
@@ -54,7 +58,7 @@ on a value, a counter, and a heading-only scene (neutral, dark). `fixtures/expec
 
 ## Status
 
-`trial` (0.1.1): rendered by this repo's CI (run 44980615532, commit ab2e90f) and by venstudio's CI through the real
+`trial` (0.1.2): rendered by this repo's CI (run 44980615532, commit ab2e90f) and by venstudio's CI through the real
 worker (run 44981421800, commit 055e029), both recorded as `ci-render` entries in `curation`. New Video offers it
-under the Trial styles once a worker (0.10.0 or later, with html-capture) reports `pack:animated-line-graph@0.1.1`. Trial runs
+under the Trial styles once a worker (0.10.0 or later, with html-capture) reports `pack:animated-line-graph@0.1.2`. Trial runs
 are research only, never published; their outcomes on the portal's Styles page are the evidence toward Proven.

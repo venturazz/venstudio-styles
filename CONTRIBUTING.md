@@ -8,7 +8,10 @@ Hermes and Kiro work here through pull requests. The owner merges. Nothing reach
    downloaded), a public repository, a Hermes skill, an article, or the owner's Review notes. Only patterns are
    kept (pacing, structure, element types), never frames, audio or script.
 2. **Draft.** A PR adds `packs/<id>/` with `style.json` at `status: "draft"`, a README, a fixture, a render project
-   if the engine needs one, and every source in `provenance` with its licence.
+   if the engine needs one, every source in `provenance` with its licence, and the `workflow` its runs follow
+   (FORMAT.md, Workflows: `image-sequence` for a picture per shot, `scene-spec` for a page drawn from data,
+   `hermes-skill` for a Hermes skill). A reserved recipe (`html-design`, `engine-project`, `clip-sequence`) is not
+   built and is refused; `html-design` needs the owner's explicit approval before it is built.
 3. **CI → lab.** This repo's CI validates the pack and renders what it can (the Remotion compositions, and every
    html-capture fixture, checked for size, fps, duration and frame count; stills packs are parameters only; hermes
    packs are never rendered here). Once the fixture renders in venstudio's CI too (after a sync, below), a PR sets

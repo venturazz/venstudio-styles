@@ -3,7 +3,7 @@
   "id": "ambient-loop",
   "name": "Relaxing ambience loop",
   "description": "Long, calm shots with ambient sound and no narration.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "status": "trial",
   "family": "ambient",
   "formats": {
@@ -136,5 +136,8 @@
       "result": "pass",
       "notes": "The stills engine this pack's parameters drive. The pack's own fixture is rendered by the styles repo CI."
     }
-  ]
+  ],
+  "workflow": {
+    "recipe": "image-sequence"
+  }
 }

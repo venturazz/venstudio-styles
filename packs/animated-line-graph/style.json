@@ -3,7 +3,7 @@
   "id": "animated-line-graph",
   "name": "Animated line graph (html-capture)",
   "description": "A smooth line draws itself on white while one big number counts up with its tip and lands on the final value. Adapted from the graph skill of claude-animation-skills (MIT).",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "status": "trial",
   "family": "motion-graphics",
   "formats": {
@@ -132,5 +132,11 @@
       "result": "pass",
       "notes": "venstudio CI rendered the pack through the real worker: render-video with html-capture (12 s, 1080x1920, 30 fps, 360 frames, H.264 yuv420p, captions burned by the worker), qc-video sampled 6 frames (apps/worker/html-capture-render.test.ts), and capture-html of the fixture passed check-video. Pack version 0.1.0; render/ is unchanged in 0.1.1."
     }
-  ]
+  ],
+  "workflow": {
+    "recipe": "scene-spec",
+    "review": [
+      "scene-spec"
+    ]
+  }
 }

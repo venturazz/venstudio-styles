@@ -36,7 +36,8 @@ packs/<id>/
 | `fixture` | Always `{ "payload": "fixtures/payload.json", "expect": "fixtures/expect.json" }`. |
 | `provenance` | Every source the look was learned from: `{ type, ref, licence, notes }`, type one of `upload`, `link`, `repo`, `skill`, `article`, `owner-note`. A licence is required; write `owner` for the owner's own material. Patterns only: no frames, audio or script from a source. |
 | `curation` | The record: `{ date, kind, ref, result, notes }`, kind one of `ci-render`, `trial-run`, `qc`, `hermes-review`, `owner-review`, `research-source`; result one of `pass`, `fail`, `approved`, `rejected`, `note`. |
-| `hermes` | Engine `hermes` only, optional: the Hermes skill the portal names in the render request. `skill` (as invoked, `/graph`), `aliases` (other names of the same skill), `mode` (`spec`: a quick skill from a small JSON spec; `project`: a full project with its own voice and caption timing), `input` (how the storyboard, brief, narration and captions map to the skill's input; a `project` skill must say how the run's narration is used), `output` (what Hermes hands back), `variantOf` (packs in this repo this is the Hermes research variant of). |
+| `hermes` | Engine `hermes` only, optional: the Hermes skill the portal names in the render request. `skill` (as invoked, `/graph`), `aliases` (other names of the same skill), `mode` (`spec`: a quick skill from a small JSON spec; `project`: a full project with its own voice and caption timing), `voice` (`run`, the default: the run's voice stage records the narration the skill uses; `skill`: the skill makes its own voice, `project` mode only, and the run has no voice stage), `input` (how the run's skill brief, narration and captions map to the skill's input; a `project` skill must say how the run's narration is used), `output` (what Hermes hands back), `variantOf` (packs in this repo this is the Hermes research variant of). |
+| `workflow` | Optional: the workflow a run of this pack goes through (below). `recipe` (one of the recipes below) and `review` (stages of this pack's list where the owner always reviews, whatever the autonomy level). Without it the recipe is inferred. |
 
 Rules the validator applies beyond the shape:
 
@@ -61,6 +62,36 @@ Rules the validator applies beyond the shape:
     `render/vendor/<name>/` with its licence file beside it.
 - No two packs share an id or a composition.
 - Size limits: 200 files, 1 MB a file, 5 MB a pack (the worker's bundle limits).
+
+## Workflows
+
+A run of a pack goes through the stages of its recipe, in order. The venstudio portal fixes a run's stage list when the
+run starts and stores it with the run, so a later pack change never changes a run that is under way, and runs from
+before workflows keep the original list. A stage kind is a reusable step the run engine knows; a recipe made only of
+known kinds needs no engine change. The table is `RECIPES` in `tools/validate.mjs`; venstudio mirrors it
+(`apps/portal/lib/studio/recipes.ts`) and a test there checks they agree.
+
+| Recipe | Stages | For |
+| --- | --- | --- |
+| `image-sequence` | idea, research, script, storyboard, assets, voice, render, qc | Packs that need a picture per shot (`contract.assets.model` `image-per-shot` or `plates-and-diagrams`): the stills packs and `explainer-flat-vector`. The original pipeline: the storyboard writes an image prompt per shot and the assets stage makes one picture per shot. |
+| `scene-spec` | idea, research, script, scene-spec, voice, render, qc | Data-driven pages: engine `html-capture`, or `remotion-2d` with `contract.onScreen.elementAnimation` true. Research asks for the real numbers the spec needs, with sources. The scene-spec stage asks Hermes (through the gate, as checked JSON) for scenes with seconds, beat, on-screen elements (with value, series and labels), motion tokens and a caption, checked against this pack's contract (elements, motion tokens, pacing, narration coverage). Every number cites the research note it comes from, and a number no sourced note contains fails the check ("never invent data"). No picture is generated: the spec is the scene plan the page draws. |
+| `hermes-skill` | idea, research, script, skill-brief, voice, render, qc | Engine `hermes` (research only); the packs here review the brief every time (`review: ["skill-brief"]`). The skill-brief stage has Hermes turn the approved script into the input the pack's skill expects (`hermes.input`): one JSON spec per shot for a `spec` skill, a text project brief for a `project` skill. The voice stage is left out when `hermes.voice` is `skill`; the video's provenance then records the voice backend Hermes names, and that backend's provider terms are checked like any voice. No picture is generated. |
+| `html-design` | reserved | Hermes would write the page for each video (research only) with a frame preview gate. Not built: it needs the owner's explicit approval first. The validator refuses it. |
+| `engine-project` | reserved | A scene-engine project (Godot, Manim, Blender) built per video. Not built; refused. |
+| `clip-sequence` | reserved | A video clip per shot instead of a picture. Not built; refused. |
+
+Rules the validator applies:
+
+- `workflow.recipe` is a known recipe, and a built one (the reserved names are refused, by name).
+- The recipe fits the pack: `image-sequence` needs `contract.assets.model` `image-per-shot` or `plates-and-diagrams`;
+  `scene-spec` needs engine `html-capture`, or `remotion-2d` with element animation; `hermes-skill` needs engine
+  `hermes`. `hermes.voice: "skill"` only goes with `hermes-skill` and `project` mode.
+- `workflow.review` names known stage kinds of this pack's own list (no repeats). No other override exists.
+
+Without `workflow`, the recipe is inferred from the engine and asset model: `hermes` gives `hermes-skill`,
+`html-capture` with plates and diagrams gives `scene-spec`, anything else gives `image-sequence`. Every pack in this
+repo names its recipe. Adding `workflow` did not raise `format`: an older validator refuses the field by name rather
+than misreading it, and an older portal runs every pack with the original pipeline.
 
 ## fixtures/expect.json
 
@@ -111,14 +142,15 @@ CI renders every html-capture pack's fixture with `runtime/html-capture/venstudi
 
 ## Hermes packs (research only)
 
-Engine `hermes` packs have no render project: the venstudio portal sends the storyboard, the scene plan, the
-pictures' URLs on Hermes's media host and the pack's contract to Hermes, which renders with its own tools and replies
-with a `/clip/` URL. The video goes through the same QC and Review as any render, always as a trial.
+Engine `hermes` packs have no render project: the venstudio portal sends the run's plan (with the `hermes-skill`
+workflow, the skill brief; with `image-sequence`, the storyboard, the scene plan and the pictures' URLs on Hermes's
+media host) and the pack's contract to Hermes, which renders with its own tools and replies with a `/clip/` URL. The
+video goes through the same QC and Review as any render, always as a trial.
 
-When the pack has a `hermes` block, the request names `hermes.skill` (and its aliases) and carries `hermes.input` and
-`hermes.output`, so Hermes renders with that skill (for example `/graph`). A `project` skill (a full reel with its own
-voice and caption timing) is told to use the run's narration and captions where it can; the result is a reel the
-studio QCs. The reply is checked exactly as without a skill (a `/clip/` URL on the media host, downloaded, sniffed, then
+When the pack has a `hermes` block, the request names `hermes.skill` (and its aliases) and carries `hermes.input`,
+`hermes.output` and the brief, so Hermes renders with that skill (for example `/graph`). With `hermes.voice: "run"`
+the skill uses the run's narration and captions; with `"skill"` it records its own voice from the narration script
+and names the voice backend in its reply; the result is a reel the studio QCs. The reply is checked exactly as without a skill (a `/clip/` URL on the media host, downloaded, sniffed, then
 qc-video), and the video's provenance records the backend, the plugin and the skill.
 
 ## Versioning the format

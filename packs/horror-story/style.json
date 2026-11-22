@@ -3,7 +3,7 @@
   "id": "horror-story",
   "name": "Original horror story",
   "description": "A fictional story told over dark stills with sound design.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "status": "trial",
   "family": "narrative",
   "formats": {
@@ -134,5 +134,8 @@
       "result": "pass",
       "notes": "The stills engine this pack's parameters drive. The pack's own fixture is rendered by the styles repo CI."
     }
-  ]
+  ],
+  "workflow": {
+    "recipe": "image-sequence"
+  }
 }

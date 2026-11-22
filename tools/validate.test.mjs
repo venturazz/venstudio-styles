@@ -164,7 +164,7 @@ test("one research pack per claude-animation-skills skill, pinned, credited and 
 test("the two adaptations are at trial on real CI renders: this repo's and venstudio's", () => {
   for (const id of ["animated-line-graph", "minimal-line-art"]) {
     const s = load(id);
-    assert.deepEqual([s.status, s.version], ["trial", "0.1.1"], id);
+    assert.deepEqual([s.status, s.version], ["trial", "0.1.2"], id);
     const refs = s.curation.filter((e) => e.kind === "ci-render" && e.result === "pass").map((e) => e.ref);
     assert.ok(refs.some((r) => r.includes("venturazz/venstudio/actions/runs/44981421800") && r.includes("055e029")), id);
     assert.ok(refs.some((r) => r.includes("venturazz/venstudio-styles/actions/runs/44980615532")), id);
@@ -186,7 +186,7 @@ test("a valid pack has no issues, and so does its copy in a fresh repo", (t) => 
 
 test("every required top-level field is required", () => {
   const good = load("explainer-flat-vector");
-  for (const k of Object.keys(good)) {
+  for (const k of Object.keys(good).filter((k) => !V.OPTIONAL_TOP_KEYS.includes(k))) {
     const s = clone(good);
     delete s[k];
     assert.ok(V.validateStyle(s, { dirName: "explainer-flat-vector" }).length > 0, `missing ${k} was accepted`);
@@ -296,12 +296,98 @@ test("the JSON schema's enums are the validator's", () => {
   assert.deepEqual(p.provenance.items.properties.type.enum, V.PROVENANCE_TYPES);
   assert.deepEqual(p.curation.items.properties.kind.enum, V.CURATION_KINDS);
   assert.deepEqual(p.contract.properties.onScreen.properties.motionTokens.items.enum, V.MOTION_TOKENS);
-  assert.deepEqual(schema.required.sort(), Object.keys(load("documentary-stills")).sort());
+  assert.deepEqual(schema.required.sort(), Object.keys(load("documentary-stills")).filter((k) => !V.OPTIONAL_TOP_KEYS.includes(k)).sort());
   assert.deepEqual(p.hermes.properties.mode.enum, V.HERMES_MODES);
+  assert.deepEqual(p.hermes.properties.voice.enum, V.HERMES_VOICES);
+  assert.deepEqual(p.workflow.properties.recipe.enum, V.RECIPE_IDS);
+  assert.deepEqual(p.workflow.properties.review.items.enum, V.STAGE_KINDS);
 });
 
 test("the assembler's generated files are stable", () => {
   const packs = [{ id: "b-pack", version: "1.0.0", composition: "b" }, { id: "a-pack", version: "2.0.0", composition: "a" }];
   assert.match(packIndexSource(packs), /import \{ composition as pack0 \} from "\.\/a-pack\/index\.tsx";\nimport \{ composition as pack1 \} from "\.\/b-pack\/index\.tsx";/);
   assert.equal(JSON.parse(packListJson(packs))[0].id, "a-pack");
+});
+
+test("workflow: every pack names its recipe; stills and the explainer are image-sequence, data pages scene-spec, hermes packs hermes-skill", () => {
+  const expected = {
+    "ambient-loop": "image-sequence",
+    "documentary-stills": "image-sequence",
+    "explainer-flat-vector": "image-sequence",
+    "horror-story": "image-sequence",
+    "mystery-narration": "image-sequence",
+    "story-read-aloud": "image-sequence",
+    "travel-documentary": "image-sequence",
+    "animated-line-graph": "scene-spec",
+    "minimal-line-art": "scene-spec",
+    "probe-line-graph": "scene-spec",
+  };
+  const { packs } = V.validateRepo(ROOT);
+  for (const { id } of packs) {
+    const s = load(id);
+    const want = id.startsWith("hermes-") ? "hermes-skill" : expected[id];
+    assert.equal(s.workflow?.recipe, want, id);
+    // The recipe a pack names is the one its engine and asset model imply, so inference agrees for these packs.
+    assert.equal(V.recipeOf({ ...clone(s), workflow: undefined }), want, `${id} inferred`);
+  }
+  // The two full-project skills make their own voice (their make.sh records with Kokoro and times every shot to it); the quick skills use the run's narration.
+  for (const id of packs.map((p) => p.id).filter((i) => load(i).hermes)) {
+    const voice = load(id).hermes.voice;
+    assert.equal(voice, ["hermes-stick-figure", "hermes-zach-d-films"].includes(id) ? "skill" : "run", id);
+    assert.deepEqual(V.workflowStages(load(id)), voice === "skill" ? ["idea", "research", "script", "skill-brief", "render", "qc"] : ["idea", "research", "script", "skill-brief", "voice", "render", "qc"], id);
+  }
+  assert.deepEqual(V.workflowStages(load("documentary-stills")), ["idea", "research", "script", "storyboard", "assets", "voice", "render", "qc"]);
+  assert.deepEqual(V.workflowStages(load("animated-line-graph")), ["idea", "research", "script", "scene-spec", "voice", "render", "qc"]);
+  assert.deepEqual(load("animated-line-graph").workflow.review, ["scene-spec"]);
+  // The owner checks the plan of a run without pictures every time: the scene spec, or the skill brief.
+  for (const { id } of packs) if (id.startsWith("hermes-")) assert.deepEqual(load(id).workflow.review, ["skill-brief"], id);
+});
+
+test("workflow rules: a known, built recipe that fits the engine; review names stages of the pack's own list", () => {
+  const stills = load("documentary-stills");
+  const graph = load("animated-line-graph");
+  const explainer = load("explainer-flat-vector");
+  const hermes = load("hermes-graph");
+  const project = load("hermes-stick-figure");
+  const w = (s, workflow) => ({ ...clone(s), workflow });
+  assert.ok(has(V.validateStyle(w(stills, { recipe: "slideshow" })), /workflow.recipe must be one of image-sequence, scene-spec, hermes-skill, html-design, engine-project, clip-sequence/));
+  for (const reserved of ["html-design", "engine-project", "clip-sequence"]) {
+    assert.ok(has(V.validateStyle(w(graph, { recipe: reserved })), new RegExp(`workflow.recipe ${reserved} is a reserved name: it is not built yet`)), reserved);
+  }
+  assert.ok(has(V.validateStyle(w(graph, { recipe: "html-design" })), /owner's explicit approval/));
+  // scene-spec needs a page that draws the spec: html-capture, or remotion-2d that animates elements.
+  assert.ok(has(V.validateStyle(w(stills, { recipe: "scene-spec" })), /scene-spec needs engine html-capture, or remotion-2d with contract.onScreen.elementAnimation true.*; this pack renders with ffmpeg-stills/));
+  assert.deepEqual(V.validateStyle(w(explainer, { recipe: "scene-spec" })), [], "remotion-2d with element animation may use scene-spec");
+  const still = clone(explainer);
+  still.contract.onScreen.elementAnimation = false;
+  assert.ok(has(V.validateStyle(w(still, { recipe: "scene-spec" })), /this pack renders with remotion-2d without element animation/));
+  // hermes-skill needs engine hermes, and a hermes pack may still run image-sequence (its pictures, as before).
+  assert.ok(has(V.validateStyle(w(graph, { recipe: "hermes-skill" })), /hermes-skill needs engine hermes/));
+  assert.deepEqual(V.validateStyle(w(load("hermes-research-explainer"), { recipe: "image-sequence" })), []);
+  // image-sequence needs a picture-per-shot asset model.
+  const noModel = clone(stills);
+  noModel.contract.assets.model = "none";
+  assert.ok(has(V.validateStyle(w(noModel, { recipe: "image-sequence" })), /image-sequence needs contract.assets.model image-per-shot or plates-and-diagrams/));
+  // Overrides: only `review`, naming known stage kinds of this pack's list.
+  assert.ok(has(V.validateStyle(w(stills, { recipe: "image-sequence", stages: ["idea"] })), /workflow: unknown field "stages"/));
+  assert.ok(has(V.validateStyle(w(stills, { recipe: "image-sequence", review: ["approval"] })), /workflow.review: "approval" is not a stage kind/));
+  assert.ok(has(V.validateStyle(w(stills, { recipe: "image-sequence", review: ["scene-spec"] })), /workflow.review: scene-spec is not a stage of this pack's workflow/));
+  assert.ok(has(V.validateStyle(w(stills, { recipe: "image-sequence", review: ["assets", "assets"] })), /listed twice/));
+  assert.deepEqual(V.validateStyle(w(stills, { recipe: "image-sequence", review: ["assets"] })), []);
+  assert.ok(has(V.validateStyle(w(project, { recipe: "hermes-skill", review: ["voice"] })), /voice is not a stage of this pack's workflow/), "a skill that voices itself has no voice stage");
+  assert.ok(has(V.validateStyle({ ...clone(stills), workflow: "image-sequence" }), /workflow must be an object naming a recipe/));
+  // Without workflow the recipe is inferred, and the pack is still valid.
+  const bare = clone(stills);
+  delete bare.workflow;
+  assert.deepEqual(V.validateStyle(bare), []);
+  assert.equal(V.recipeOf(bare), "image-sequence");
+  // hermes.voice: run or skill; skill only for a full-project skill.
+  assert.ok(has(V.validateStyle({ ...clone(hermes), hermes: { ...hermes.hermes, voice: "skill" } }), /hermes.voice skill needs mode project/));
+  assert.ok(has(V.validateStyle({ ...clone(hermes), hermes: { ...hermes.hermes, voice: "both" } }), /hermes.voice must be one of run, skill/));
+  assert.ok(has(V.validateStyle({ ...clone(project), workflow: { recipe: "image-sequence" } }), /hermes.voice skill only applies to the hermes-skill recipe/));
+  // The reserved recipes name stage kinds that are reserved too, never ones the engine runs.
+  for (const id of V.RECIPE_IDS) {
+    for (const k of V.RECIPES[id].stages) assert.ok(V.STAGE_KINDS.includes(k) || (!V.RECIPES[id].implemented && V.RESERVED_STAGE_KINDS.includes(k)), `${id}: ${k}`);
+  }
+  assert.deepEqual(V.IMPLEMENTED_RECIPES, ["image-sequence", "scene-spec", "hermes-skill"]);
 });
