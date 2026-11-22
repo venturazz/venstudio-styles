@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Syntax
+        run: |
+          for f in tools/*.mjs runtime/remotion/scripts/probe.mjs; do node --check "$f"; done
+          node runtime/html-capture/venstudio-worker.ts help > /dev/null
+      - name: Validate every pack (style.json, README, provenance, fixtures, render projects)
+        run: node tools/validate.mjs
+      - name: Validator unit tests
+        run: node --test "tools/*.test.mjs"
+
+  remotion:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PROJECT: ${{ github.workspace }}/.remotion-project
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Assemble the Remotion project (runtime + every remotion-2d pack, and html/ with every html-capture pack, as workers get it)
+        run: node tools/assemble-remotion.mjs "$PROJECT"
+      - name: Install the runtime's packages and typecheck the packs against it
+        working-directory: .remotion-project
+        run: |
+          npm install --no-audit --no-fund
+          npx tsc -p tsconfig.json
+      - name: System libraries for headless Chromium, and ffprobe
+        timeout-minutes: 8
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          echo 'path-exclude /usr/share/man/*' | sudo tee /etc/dpkg/dpkg.cfg.d/01_noman >/dev/null
+          sudo rm -f /var/lib/man-db/auto-update
+          npx -y playwright@1.65.1 install-deps chromium
+          if ! timeout 240 sh -c 'sudo apt-get install -y -qq --no-install-recommends ffmpeg'; then
+            curl -fsSL -o /tmp/ff.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+            mkdir -p /tmp/ff && tar -xJf /tmp/ff.tar.xz -C /tmp/ff --strip-components=1
+            sudo cp /tmp/ff/ffmpeg /tmp/ff/ffprobe /usr/local/bin/
+          fi
+          ffprobe -version | head -1
+      - name: Full probe (a still of every composition), then the quick probe the worker runs
+        working-directory: .remotion-project
+        run: |
+          npx remotion browser ensure
+          node scripts/probe.mjs --full
+          node scripts/probe.mjs
+      - name: Render 3 s of every composition with the sample props and check the frame size
+        working-directory: .remotion-project
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for comp in $(node -e 'for (const p of JSON.parse(require("fs").readFileSync("src/packs/packs.json","utf8"))) console.log(p.composition)'); do
+            npx remotion render src/index.ts "$comp" "out/$comp.mp4" --frames=0-89 --gl=swangle --concurrency=2 --codec=h264 --log=info
+            size=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "out/$comp.mp4")
+            echo "$comp: $size"
+            [ "$size" = "1080,1920" ] || { echo "$comp rendered $size, expected 1080,1920"; exit 1; }
+          done
+      - name: Render every html-capture pack's fixture with the vendored worker, then check size, fps, duration and frame count
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          font=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+          [ -f "$font" ] || font=$(fc-list : file | sed 's/: *$//' | grep -m1 '\.ttf$')
+          mkdir -p .remotion-project/out
+          ids=$(node -e 'for (const p of JSON.parse(require("fs").readFileSync(".remotion-project/html/packs.json","utf8"))) console.log(p.id)')
+          [ -n "$ids" ] || { echo "no html-capture pack was assembled"; exit 1; }
+          for id in $ids; do
+            node runtime/html-capture/venstudio-worker.ts capture-html --pack "packs/$id" --out ".remotion-project/out/$id.mp4" --remotion "$PROJECT" --font "$font"
+            node tools/check-video.mjs ".remotion-project/out/$id.mp4" "packs/$id/fixtures/expect.json"
+          done
+      - name: Upload the clips
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remotion-clips
+          path: .remotion-project/out
+          if-no-files-found: ignore

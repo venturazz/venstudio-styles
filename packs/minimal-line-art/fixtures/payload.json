@@ -1,0 +1,129 @@
+{
+  "format": "short",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "engine": "html-capture",
+  "transitionSec": 0,
+  "shots": [
+    {
+      "shotRef": "shot-01",
+      "assetId": "asset-shot-01",
+      "seconds": 4,
+      "motion": "none"
+    },
+    {
+      "shotRef": "shot-02",
+      "assetId": "asset-shot-02",
+      "seconds": 4,
+      "motion": "none"
+    }
+  ],
+  "narrationAssetId": "asset-narration",
+  "narrationSec": 8,
+  "durationSec": 8,
+  "targetLufs": -14,
+  "fontAssetId": "asset-font",
+  "inputs": [
+    "asset-shot-01",
+    "asset-shot-02",
+    "asset-narration",
+    "asset-font"
+  ],
+  "captions": [
+    {
+      "start": 0,
+      "end": 4,
+      "text": "a page a day feels like nothing."
+    },
+    {
+      "start": 4,
+      "end": 8,
+      "text": "then the shelf fills up."
+    }
+  ],
+  "captionStyle": {
+    "fontAssetId": "asset-font",
+    "fontSizePx": 78,
+    "minFontSizePx": 64,
+    "maxFontSizePx": 78,
+    "lineSpacingPx": 26,
+    "outlinePx": 7,
+    "shadowPx": 5,
+    "marginXPx": 51,
+    "marginBottomPx": 154,
+    "maxWidthPx": 978,
+    "narrowFace": false,
+    "safeAreaPct": 8
+  },
+  "scenePlan": {
+    "version": 1,
+    "engine": "html-capture",
+    "template": "minimal-line-art",
+    "family": "motion-graphics",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "transitionSec": 0,
+    "scenes": [
+      {
+        "shotRef": "shot-01",
+        "seconds": 4,
+        "beatRole": "hook",
+        "elements": [
+          {
+            "kind": "heading",
+            "text": "small steps"
+          },
+          {
+            "kind": "plate"
+          }
+        ],
+        "tokens": [
+          "bar",
+          "pop"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 120,
+            "fps": 30
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-02",
+        "seconds": 4,
+        "beatRole": "outro",
+        "elements": [
+          {
+            "kind": "bar",
+            "text": "pages read",
+            "series": [
+              2,
+              3,
+              5
+            ]
+          },
+          {
+            "kind": "plate"
+          }
+        ],
+        "tokens": [
+          "bar",
+          "pop",
+          "draw"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 120,
+            "fps": 30
+          }
+        ]
+      }
+    ]
+  }
+}

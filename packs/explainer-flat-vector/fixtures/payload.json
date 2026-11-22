@@ -1,0 +1,294 @@
+{
+  "format": "short",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "engine": "remotion-2d",
+  "transitionSec": 0.5,
+  "shots": [
+    {
+      "shotRef": "shot-01",
+      "assetId": "asset-shot-01",
+      "seconds": 4.667,
+      "motion": "zoom-in"
+    },
+    {
+      "shotRef": "shot-02",
+      "assetId": "asset-shot-02",
+      "seconds": 5.333,
+      "motion": "pan-left"
+    },
+    {
+      "shotRef": "shot-03",
+      "assetId": "asset-shot-03",
+      "seconds": 6,
+      "motion": "zoom-out"
+    },
+    {
+      "shotRef": "shot-04",
+      "assetId": "asset-shot-04",
+      "seconds": 5.333,
+      "motion": "pan-right"
+    },
+    {
+      "shotRef": "shot-05",
+      "assetId": "asset-shot-05",
+      "seconds": 4.667,
+      "motion": "zoom-in"
+    }
+  ],
+  "narrationAssetId": "asset-narration",
+  "narrationSec": 24,
+  "durationSec": 24,
+  "captions": [
+    {
+      "start": 0,
+      "end": 3.378,
+      "text": "Iron is everywhere."
+    },
+    {
+      "start": 3.378,
+      "end": 9.244,
+      "text": "The furnace reaches 1400 degrees."
+    },
+    {
+      "start": 9.244,
+      "end": 14.4,
+      "text": "The hammer draws the bar out."
+    },
+    {
+      "start": 14.4,
+      "end": 19.022,
+      "text": "Quenching locks the grain."
+    },
+    {
+      "start": 19.022,
+      "end": 24,
+      "text": "That is how a blade is born."
+    }
+  ],
+  "targetLufs": -14,
+  "fontAssetId": "asset-font",
+  "inputs": [
+    "asset-shot-01",
+    "asset-shot-02",
+    "asset-shot-03",
+    "asset-shot-04",
+    "asset-shot-05",
+    "asset-narration",
+    "asset-font",
+    "asset-bed"
+  ],
+  "scenePlan": {
+    "version": 1,
+    "engine": "remotion-2d",
+    "template": "explainer-flat-vector",
+    "family": "explainer",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "transitionSec": 0.5,
+    "scenes": [
+      {
+        "shotRef": "shot-01",
+        "seconds": 4,
+        "beatRole": "hook",
+        "elements": [
+          {
+            "kind": "heading",
+            "text": "Iron is everywhere"
+          },
+          {
+            "kind": "plate"
+          }
+        ],
+        "tokens": [
+          "pop"
+        ],
+        "camera": true,
+        "layers": [
+          {
+            "id": "plate",
+            "frames": 1,
+            "fps": 1
+          },
+          {
+            "id": "scene",
+            "frames": 120,
+            "fps": 30
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-02",
+        "seconds": 5,
+        "beatRole": "setup",
+        "elements": [
+          {
+            "kind": "counter",
+            "text": "degrees",
+            "value": 1400
+          },
+          {
+            "kind": "plate"
+          }
+        ],
+        "tokens": [
+          "counter"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "plate",
+            "frames": 1,
+            "fps": 1
+          },
+          {
+            "id": "scene",
+            "frames": 150,
+            "fps": 30
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-03",
+        "seconds": 6,
+        "beatRole": "body",
+        "elements": [
+          {
+            "kind": "bar",
+            "text": "draw ratio",
+            "series": [
+              0.2,
+              0.45,
+              0.7,
+              0.95
+            ]
+          },
+          {
+            "kind": "plate"
+          }
+        ],
+        "tokens": [
+          "draw",
+          "bar"
+        ],
+        "camera": true,
+        "layers": [
+          {
+            "id": "plate",
+            "frames": 1,
+            "fps": 1
+          },
+          {
+            "id": "scene",
+            "frames": 180,
+            "fps": 30
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-04",
+        "seconds": 5,
+        "beatRole": "body",
+        "elements": [
+          {
+            "kind": "callout",
+            "text": "the grain locks"
+          },
+          {
+            "kind": "plate"
+          }
+        ],
+        "tokens": [
+          "pop"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "plate",
+            "frames": 1,
+            "fps": 1
+          },
+          {
+            "id": "scene",
+            "frames": 150,
+            "fps": 30
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-05",
+        "seconds": 4,
+        "beatRole": "outro",
+        "elements": [
+          {
+            "kind": "heading",
+            "text": "That is how a blade is born"
+          },
+          {
+            "kind": "plate"
+          }
+        ],
+        "tokens": [
+          "dim"
+        ],
+        "camera": true,
+        "layers": [
+          {
+            "id": "plate",
+            "frames": 1,
+            "fps": 1
+          },
+          {
+            "id": "scene",
+            "frames": 120,
+            "fps": 30
+          }
+        ]
+      }
+    ]
+  },
+  "captionStyle": {
+    "fontAssetId": "asset-font",
+    "fontSizePx": 78,
+    "minFontSizePx": 64,
+    "maxFontSizePx": 78,
+    "lineSpacingPx": 26,
+    "outlinePx": 7,
+    "shadowPx": 5,
+    "marginXPx": 51,
+    "marginBottomPx": 154,
+    "maxWidthPx": 978,
+    "narrowFace": false,
+    "safeAreaPct": 8
+  },
+  "audio": {
+    "master": {
+      "targetLufs": -14,
+      "maxTruePeakDb": -1
+    },
+    "bed": {
+      "assetId": "asset-bed",
+      "sourceLufs": -20,
+      "gainDb": 3.5,
+      "duck": {
+        "threshold": 0.02,
+        "ratio": 4,
+        "attackMs": 15,
+        "releaseMs": 350,
+        "makeup": 1
+      },
+      "cover": "loop"
+    },
+    "ambient": {
+      "color": "brown",
+      "bandHz": [
+        90,
+        3200
+      ],
+      "gainDb": -26
+    },
+    "sfx": []
+  }
+}

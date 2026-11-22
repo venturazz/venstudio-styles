@@ -1,0 +1,67 @@
+{
+  "format": "short",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "engine": "ffmpeg-stills",
+  "transitionSec": 0.5,
+  "shots": [
+    {
+      "shotRef": "shot-01",
+      "assetId": "asset-shot-01",
+      "seconds": 2.5,
+      "motion": "zoom-in"
+    },
+    {
+      "shotRef": "shot-02",
+      "assetId": "asset-shot-02",
+      "seconds": 5,
+      "motion": "pan-left"
+    },
+    {
+      "shotRef": "shot-03",
+      "assetId": "asset-shot-03",
+      "seconds": 5,
+      "motion": "zoom-out"
+    },
+    {
+      "shotRef": "shot-04",
+      "assetId": "asset-shot-04",
+      "seconds": 5,
+      "motion": "pan-right"
+    }
+  ],
+  "narrationAssetId": "asset-narration",
+  "narrationSec": 16,
+  "durationSec": 16,
+  "captions": [
+    {
+      "start": 0,
+      "end": 4,
+      "text": "The road climbs out of the valley."
+    },
+    {
+      "start": 4,
+      "end": 8,
+      "text": "Terraces step down to the river."
+    },
+    {
+      "start": 8,
+      "end": 12,
+      "text": "The market opens before sunrise."
+    },
+    {
+      "start": 12,
+      "end": 16,
+      "text": "By noon the square is full."
+    }
+  ],
+  "targetLufs": -14,
+  "inputs": [
+    "asset-shot-01",
+    "asset-shot-02",
+    "asset-shot-03",
+    "asset-shot-04",
+    "asset-narration"
+  ]
+}

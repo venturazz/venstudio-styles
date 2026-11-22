@@ -1,0 +1,181 @@
+{
+  "format": 1,
+  "id": "explainer-flat-vector",
+  "name": "Flat-vector explainer",
+  "description": "A calm narrator over flat illustrated scenes that build one argument step by step.",
+  "version": "1.0.0",
+  "status": "trial",
+  "family": "explainer",
+  "formats": {
+    "supported": [
+      "short",
+      "long"
+    ],
+    "naturalFrame": "landscape"
+  },
+  "renderer": {
+    "engine": "remotion-2d",
+    "minWorkerVersion": "0.9.0",
+    "composition": "flat-vector-explainer"
+  },
+  "contract": {
+    "pacing": {
+      "shotSeconds": [
+        2,
+        4
+      ],
+      "hookWithinMs": 3000,
+      "cutsPerMinute": [
+        15,
+        30
+      ],
+      "transitionSec": 0.5
+    },
+    "onScreen": {
+      "elements": [
+        "plate",
+        "heading",
+        "callout",
+        "counter",
+        "bar",
+        "gauge",
+        "arrow",
+        "tally",
+        "particles",
+        "diagram"
+      ],
+      "motionTokens": [
+        "draw",
+        "pop",
+        "gauge",
+        "counter",
+        "bar",
+        "arrow",
+        "tally",
+        "particles",
+        "pull",
+        "push",
+        "whip",
+        "shake",
+        "drift",
+        "parallax",
+        "scribble",
+        "blot",
+        "flicker",
+        "morph",
+        "dim"
+      ],
+      "elementAnimation": true
+    },
+    "captions": {
+      "required": true,
+      "spec": "caption-spec-v1",
+      "safeAreaPct": 8
+    },
+    "audio": {
+      "narrated": true,
+      "targetLufs": -14,
+      "maxTruePeakDb": -1,
+      "musicPolicy": "self-or-licensed"
+    },
+    "assets": {
+      "model": "plates-and-diagrams",
+      "kinds": [
+        "image"
+      ],
+      "allowedSources": [
+        "upload",
+        "hermes",
+        "muse",
+        "worker",
+        "licensed",
+        "generated"
+      ],
+      "forbidKinds": [
+        "reference-video"
+      ]
+    }
+  },
+  "portal": {
+    "beatShape": "ending-cta",
+    "qc": {
+      "minPresentationScore": 75,
+      "gates": [
+        "G-technical",
+        "G-presentation",
+        "G-assets",
+        "G-compliance",
+        "G-claims"
+      ]
+    },
+    "themes": [
+      "science",
+      "space",
+      "tech",
+      "history"
+    ],
+    "keywords": [
+      "explainer",
+      "explain",
+      "how it works",
+      "why",
+      "science",
+      "biology",
+      "facts",
+      "animated facts",
+      "documentary style"
+    ],
+    "cautions": [
+      "Write the argument yourself. Don't paraphrase another channel's script.",
+      "Build your own illustration style; don't copy a specific channel's look."
+    ],
+    "sources": [
+      "https://www.revid.ai/blog/best-faceless-youtube-channels"
+    ]
+  },
+  "fixture": {
+    "payload": "fixtures/payload.json",
+    "expect": "fixtures/expect.json"
+  },
+  "provenance": [
+    {
+      "type": "article",
+      "ref": "venturazz/venstudio docs/research/03-production-styles-and-muse-capabilities.md",
+      "licence": "VenStudio research notes (owner)",
+      "notes": "Where the style was first described: niche, engine, Muse placement and cautions."
+    },
+    {
+      "type": "article",
+      "ref": "venturazz/venstudio docs/research/04-autonomous-studio-workflow.md",
+      "licence": "VenStudio research notes (owner)",
+      "notes": "Template lifecycle, QC gates and the copyright checklist this pack's portal parameters come from."
+    },
+    {
+      "type": "link",
+      "ref": "https://www.revid.ai/blog/best-faceless-youtube-channels",
+      "licence": "public web page; read for patterns only, nothing copied",
+      "notes": "Cited in the catalog as research for this niche."
+    },
+    {
+      "type": "skill",
+      "ref": "Hermes skill flat-vector-explainer-video (described in venturazz/venstudio docs/plans/2026-11-20-render-templates-from-skills.md)",
+      "licence": "not recorded in the studio; the skill lives in the owner's Hermes install, only its parameters are used",
+      "notes": "Per-beat motion grammar, the motion tokens, SVG diagrams drawn in code and the variation rule."
+    },
+    {
+      "type": "owner-note",
+      "ref": "venturazz/venstudio apps/portal/lib/studio/catalog.ts (explainer-flat-vector comment)",
+      "licence": "owner",
+      "notes": "Pacing measured on a reference: 196 cuts in 8:14, 23.8 cuts a minute, 2.27 s median shot. Numbers only, no frames or audio kept."
+    }
+  ],
+  "curation": [
+    {
+      "date": "2026-11-21",
+      "kind": "ci-render",
+      "ref": "venturazz/venstudio CI, PR #15 (f712dcf): Remotion renderer step renders fixtures/render/explainer-payload.json and qc-video measures it",
+      "result": "pass",
+      "notes": "1080x1920, 24 s, G-technical passed. The render this pack starts from; it moved into the pack unchanged."
+    }
+  ]
+}
