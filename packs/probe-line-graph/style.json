@@ -1,0 +1,124 @@
+{
+  "format": 1,
+  "id": "probe-line-graph",
+  "name": "Probe: line graph (html-capture)",
+  "description": "A short animated line graph with a heading and a counter, drawn in HTML and SVG. Lab pack that proves the html-capture renderer.",
+  "version": "0.1.0",
+  "status": "lab",
+  "family": "motion-graphics",
+  "formats": {
+    "supported": [
+      "short"
+    ],
+    "naturalFrame": "portrait"
+  },
+  "renderer": {
+    "engine": "html-capture",
+    "minWorkerVersion": "0.10.0",
+    "composition": null,
+    "drawsCaptions": false
+  },
+  "contract": {
+    "pacing": {
+      "shotSeconds": [
+        2,
+        4
+      ],
+      "hookWithinMs": 2000,
+      "cutsPerMinute": [
+        15,
+        30
+      ],
+      "transitionSec": 0
+    },
+    "onScreen": {
+      "elements": [
+        "plate",
+        "heading",
+        "bar",
+        "counter"
+      ],
+      "motionTokens": [
+        "draw",
+        "pop",
+        "counter"
+      ],
+      "elementAnimation": true
+    },
+    "captions": {
+      "required": true,
+      "spec": "caption-spec-v1",
+      "safeAreaPct": 8
+    },
+    "audio": {
+      "narrated": true,
+      "targetLufs": -14,
+      "maxTruePeakDb": -1,
+      "musicPolicy": "none"
+    },
+    "assets": {
+      "model": "plates-and-diagrams",
+      "kinds": [
+        "image"
+      ],
+      "allowedSources": [
+        "upload",
+        "hermes",
+        "worker",
+        "generated"
+      ],
+      "forbidKinds": [
+        "reference-video"
+      ]
+    }
+  },
+  "portal": {
+    "beatShape": "single",
+    "qc": {
+      "minPresentationScore": 75,
+      "gates": [
+        "G-technical",
+        "G-presentation"
+      ]
+    },
+    "themes": [
+      "finance"
+    ],
+    "keywords": [
+      "line graph",
+      "chart",
+      "trend"
+    ],
+    "cautions": [
+      "A probe of the renderer, not a look to publish: it stays in lab."
+    ],
+    "sources": []
+  },
+  "fixture": {
+    "payload": "fixtures/payload.json",
+    "expect": "fixtures/expect.json"
+  },
+  "provenance": [
+    {
+      "type": "repo",
+      "ref": "https://github.com/artemnovitckii/claude-animation-skills",
+      "licence": "MIT",
+      "notes": "Only the approach was taken: an HTML page with a deterministic renderFrame(frame), captured frame by frame in headless Chromium and piped into ffmpeg. No file, template or code was copied; adapting its templates is Phase 3."
+    },
+    {
+      "type": "owner-note",
+      "ref": "venturazz/venstudio docs/plans/style-system.md (Phase 2: renderer framework and html-capture)",
+      "licence": "owner",
+      "notes": "Written for VenStudio as the first html-capture pack. Template code in render/ is original."
+    }
+  ],
+  "curation": [
+    {
+      "date": "2026-11-21",
+      "kind": "ci-render",
+      "ref": "venturazz/venstudio-styles CI, job html-capture (branch feat/html-capture): capture-html renders fixtures/payload.json with Chrome Headless Shell",
+      "result": "pass",
+      "notes": "1080x1920, 30 fps, 6 s (180 frames), H.264 yuv420p; captions burned by ffmpeg with captionStyle. The same render runs in venstudio CI (apps/worker/html-capture-render.test.ts) through the real render-video path with the narration and qc-video."
+    }
+  ]
+}

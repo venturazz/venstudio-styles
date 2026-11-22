@@ -30,7 +30,66 @@ function scratch(t, ids, edit = {}) {
 test("every pack in this repo is valid", () => {
   const { packs, issues } = V.validateRepo(ROOT);
   assert.deepEqual(issues, []);
-  assert.deepEqual(packs.map((p) => p.id), ["ambient-loop", "documentary-stills", "explainer-flat-vector", "horror-story", "mystery-narration", "story-read-aloud", "travel-documentary"]);
+  assert.deepEqual(packs.map((p) => p.id), [
+    "ambient-loop",
+    "documentary-stills",
+    "explainer-flat-vector",
+    "hermes-research-explainer",
+    "horror-story",
+    "mystery-narration",
+    "probe-line-graph",
+    "story-read-aloud",
+    "travel-documentary",
+  ]);
+});
+
+test("html-capture packs: index.html, text files only, no remote references, licences beside vendored libraries, drawsCaptions declared", (t) => {
+  assert.deepEqual(V.validateRepo(scratch(t, ["probe-line-graph"])).issues, []);
+  const noDraws = V.validateStyle({ ...clone(load("probe-line-graph")), renderer: { engine: "html-capture", minWorkerVersion: "0.10.0", composition: null } });
+  assert.ok(has(noDraws, /drawsCaptions must be true/));
+  const old = V.validateStyle({ ...clone(load("probe-line-graph")), renderer: { engine: "html-capture", minWorkerVersion: "0.9.0", composition: null, drawsCaptions: false } });
+  assert.ok(has(old, /0\.10\.0 or later for html-capture/));
+  const comp = V.validateStyle({ ...clone(load("probe-line-graph")), renderer: { engine: "html-capture", minWorkerVersion: "0.10.0", composition: "x-y", drawsCaptions: false } });
+  assert.ok(has(comp, /composition must be null for html-capture/));
+  assert.ok(has(V.validateStyle({ ...clone(load("documentary-stills")), renderer: { ...load("documentary-stills").renderer, drawsCaptions: true } }), /only for html-capture/));
+
+  const dir = scratch(t, ["probe-line-graph"]);
+  const render = path.join(dir, "packs", "probe-line-graph", "render");
+  writeFileSync(path.join(render, "index.html"), '<!doctype html><script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>');
+  writeFileSync(path.join(render, "style.css"), "body { background: url(//example.com/x.png) }");
+  writeFileSync(path.join(render, "photo.png"), "not text");
+  mkdirSync(path.join(render, "vendor", "gsap"), { recursive: true });
+  writeFileSync(path.join(render, "vendor", "gsap", "gsap.min.js"), "/* https://gsap.com in a comment is fine */");
+  const issues = V.validateRepo(dir).issues;
+  assert.ok(has(issues, /index\.html loads something from the network/));
+  assert.ok(has(issues, /style\.css loads something from the network/));
+  assert.ok(has(issues, /photo\.png: an html-capture project holds text files only/));
+  assert.ok(has(issues, /render\/vendor\/gsap\/ has no LICENSE file/));
+  assert.ok(!has(issues, /gsap\.min\.js loads/), "a URL inside a vendored script is not a request");
+  writeFileSync(path.join(render, "vendor", "gsap", "LICENSE.md"), "Standard license\n");
+  assert.ok(!has(V.validateRepo(dir).issues, /has no LICENSE file/));
+
+  const missing = scratch(t, ["probe-line-graph"]);
+  rmSync(path.join(missing, "packs", "probe-line-graph", "render", "index.html"));
+  assert.ok(has(V.validateRepo(missing).issues, /render\/index\.html is missing/));
+});
+
+test("hermes packs are research only: never above trial, no render project, no CI render needed", () => {
+  const h = load("hermes-research-explainer");
+  assert.deepEqual(V.validateStyle(h, { dirName: "hermes-research-explainer" }), []);
+  for (const status of ["proven", "listed"]) {
+    const s = { ...clone(h), status, curation: [{ date: "2026-11-21", kind: "owner-review", ref: "PR", result: "approved", notes: "" }, { date: "2026-11-21", kind: "trial-run", ref: "run", result: "pass", notes: "" }] };
+    assert.ok(has(V.validateStyle(s), /research only \(owner decision\): the pack can be at most trial, never/), status);
+  }
+  assert.deepEqual(V.validateStyle({ ...clone(h), status: "lab" }), [], "lab without a ci-render entry: there is no Hermes in CI");
+  assert.ok(has(V.validateStyle({ ...clone(load("probe-line-graph")), curation: [] }), /needs a passing ci-render entry/), "html-capture still needs its CI render");
+});
+
+test("renderDigest is packDigest over render/ without the prefix, as a worker hashes html/<id>/", () => {
+  const files = { "style.json": "a".repeat(64), "render/index.html": "b".repeat(64), "render/vendor/x/LICENSE": "c".repeat(64) };
+  assert.equal(V.renderDigest(files), V.packDigest({ "index.html": "b".repeat(64), "vendor/x/LICENSE": "c".repeat(64) }));
+  assert.equal(V.compareVersions("0.10.0", "0.9.0"), 1);
+  assert.equal(V.compareVersions("0.9", "0.9.0"), 0);
 });
 
 test("a valid pack has no issues, and so does its copy in a fresh repo", (t) => {
