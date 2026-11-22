@@ -4048,7 +4048,9 @@ export async function commandPackFor(spec: Pick<RenderSpec, "engine" | "scenePla
 }
 
 /** What a command render reads from {props}: the html-capture props, scene starts added, pictures as files in {inDir}. */
-export function buildCommandProps(spec: RenderSpec, files: { images: Array<string | null>; font: string | null; drawsCaptions: boolean }): HtmlCaptureProps & { kind: "command"; scenes: Array<RenderScene & { start: number; startFrame: number; frames: number }> } {
+export type CommandProps = Omit<HtmlCaptureProps, "scenes"> & { kind: "command"; scenes: Array<RenderScene & { start: number; startFrame: number; frames: number }> };
+
+export function buildCommandProps(spec: RenderSpec, files: { images: Array<string | null>; font: string | null; drawsCaptions: boolean }): CommandProps {
   const base = buildHtmlCaptureProps(spec, files);
   return {
     ...base,
