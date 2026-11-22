@@ -32,10 +32,12 @@ test("every pack in this repo is valid", () => {
   assert.deepEqual(issues, []);
   assert.deepEqual(packs.map((p) => p.id), [
     "ambient-loop",
+    "animated-line-graph",
     "documentary-stills",
     "explainer-flat-vector",
     "hermes-research-explainer",
     "horror-story",
+    "minimal-line-art",
     "mystery-narration",
     "probe-line-graph",
     "story-read-aloud",

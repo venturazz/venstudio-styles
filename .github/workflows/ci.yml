@@ -32,7 +32,7 @@ jobs:
   remotion:
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       PROJECT: ${{ github.workspace }}/.remotion-project
     steps:
@@ -79,7 +79,7 @@ jobs:
             [ "$size" = "1080,1920" ] || { echo "$comp rendered $size, expected 1080,1920"; exit 1; }
           done
       - name: Render every html-capture pack's fixture with the vendored worker, then check size, fps, duration and frame count
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           font=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
