@@ -35,17 +35,23 @@ packs/<id>/
 | `portal` | What else the portal uses today: `beatShape` (`ending-cta`, `ending-outro`, `single`), `qc` (`minPresentationScore`, `gates`), and the planner's `themes`, `keywords`, `cautions`, `sources`. |
 | `fixture` | Always `{ "payload": "fixtures/payload.json", "expect": "fixtures/expect.json" }`. |
 | `provenance` | Every source the look was learned from: `{ type, ref, licence, notes }`, type one of `upload`, `link`, `repo`, `skill`, `article`, `owner-note`. A licence is required; write `owner` for the owner's own material. Patterns only: no frames, audio or script from a source. |
-| `curation` | The record: `{ date, kind, ref, result, notes }`, kind one of `ci-render`, `trial-run`, `qc`, `hermes-review`, `owner-review`; result one of `pass`, `fail`, `approved`, `rejected`, `note`. |
+| `curation` | The record: `{ date, kind, ref, result, notes }`, kind one of `ci-render`, `trial-run`, `qc`, `hermes-review`, `owner-review`, `research-source`; result one of `pass`, `fail`, `approved`, `rejected`, `note`. |
+| `hermes` | Engine `hermes` only, optional: the Hermes skill the portal names in the render request. `skill` (as invoked, `/graph`), `aliases` (other names of the same skill), `mode` (`spec`: a quick skill from a small JSON spec; `project`: a full project with its own voice and caption timing), `input` (how the storyboard, brief, narration and captions map to the skill's input; a `project` skill must say how the run's narration is used), `output` (what Hermes hands back), `variantOf` (packs in this repo this is the Hermes research variant of). |
 
 Rules the validator applies beyond the shape:
 
-- `lab`, `trial`, `proven` and `listed` need a `ci-render` entry with result `pass`.
+- `lab`, `trial`, `proven` and `listed` need a `ci-render` entry with result `pass`, except engine `hermes` (below).
+- Engine `hermes` at `lab` or `trial` needs a `research-source` entry with result `pass` instead: the source the look
+  comes from (repository and commit, or the owner decision) and the report that it renders in Hermes. There is no
+  Hermes in CI, so no CI render exists for such a pack and none may be claimed. `research-source` is refused on any
+  other engine: a pack VenStudio renders itself still needs a real `ci-render` to leave `draft`.
 - `proven` and `listed` need an `owner-review` entry with result `approved` and `trial-run` entries with result
   `pass` (copied from the portal's Styles page).
 - An engine VenStudio does not run yet (anything but `ffmpeg-stills`, `remotion-2d`, `html-capture` and `hermes`)
   keeps the pack at `draft` (or `retired`).
 - `hermes` is research only (owner decision): such a pack is at most `trial`, never `proven` or `listed`. It has no
   render project and no `ci-render` entry (there is no Hermes in CI).
+- `hermes` (the block) is only for engine `hermes`; `variantOf` must name packs in this repo.
 - `render/` exists exactly when the engine has a render project (`remotion-2d`, `html-capture`).
   - remotion-2d: source only (`.ts`, `.tsx`, `.json`, `.css`, `.svg`); `render/index.tsx` exports the composition
     named in `renderer.composition`.
@@ -108,6 +114,12 @@ CI renders every html-capture pack's fixture with `runtime/html-capture/venstudi
 Engine `hermes` packs have no render project: the venstudio portal sends the storyboard, the scene plan, the
 pictures' URLs on Hermes's media host and the pack's contract to Hermes, which renders with its own tools and replies
 with a `/clip/` URL. The video goes through the same QC and Review as any render, always as a trial.
+
+When the pack has a `hermes` block, the request names `hermes.skill` (and its aliases) and carries `hermes.input` and
+`hermes.output`, so Hermes renders with that skill (for example `/graph`). A `project` skill (a full reel with its own
+voice and caption timing) is told to use the run's narration and captions where it can; the result is a reel the
+studio QCs. The reply is checked exactly as without a skill (a `/clip/` URL on the media host, downloaded, sniffed, then
+qc-video), and the video's provenance records the backend, the plugin and the skill.
 
 ## Versioning the format
 

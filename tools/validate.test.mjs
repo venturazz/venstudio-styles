@@ -32,10 +32,22 @@ test("every pack in this repo is valid", () => {
   assert.deepEqual(issues, []);
   assert.deepEqual(packs.map((p) => p.id), [
     "ambient-loop",
+    "animated-line-graph",
     "documentary-stills",
     "explainer-flat-vector",
+    "hermes-breakdown",
+    "hermes-dan-koe",
+    "hermes-graph",
+    "hermes-kurzgesagt",
+    "hermes-low-poly",
+    "hermes-map-route",
+    "hermes-minecraft",
+    "hermes-minimalistic-graphics",
     "hermes-research-explainer",
+    "hermes-stick-figure",
+    "hermes-zach-d-films",
     "horror-story",
+    "minimal-line-art",
     "mystery-narration",
     "probe-line-graph",
     "story-read-aloud",
@@ -74,7 +86,7 @@ test("html-capture packs: index.html, text files only, no remote references, lic
   assert.ok(has(V.validateRepo(missing).issues, /render\/index\.html is missing/));
 });
 
-test("hermes packs are research only: never above trial, no render project, no CI render needed", () => {
+test("hermes packs are research only: never above trial, no render project, a research-source entry instead of a CI render", () => {
   const h = load("hermes-research-explainer");
   assert.deepEqual(V.validateStyle(h, { dirName: "hermes-research-explainer" }), []);
   for (const status of ["proven", "listed"]) {
@@ -83,6 +95,80 @@ test("hermes packs are research only: never above trial, no render project, no C
   }
   assert.deepEqual(V.validateStyle({ ...clone(h), status: "lab" }), [], "lab without a ci-render entry: there is no Hermes in CI");
   assert.ok(has(V.validateStyle({ ...clone(load("probe-line-graph")), curation: [] }), /needs a passing ci-render entry/), "html-capture still needs its CI render");
+});
+
+const RESEARCH = { date: "2026-11-22", kind: "research-source", ref: "https://github.com/artemnovitckii/claude-animation-skills@86f7010 (skills/graph); owner report: works in Hermes", result: "pass", notes: "" };
+
+test("research-source: accepted for a hermes pack at lab or trial, required there, never for other engines, never above trial", () => {
+  const g = load("hermes-graph");
+  assert.deepEqual(V.validateStyle(g, { dirName: "hermes-graph" }), []);
+  for (const status of ["lab", "trial"]) {
+    assert.deepEqual(V.validateStyle({ ...clone(g), status, curation: [RESEARCH] }), [], status);
+    assert.ok(has(V.validateStyle({ ...clone(g), status, curation: [] }), /hermes pack needs a research-source entry with result "pass"/), `${status} without evidence`);
+    assert.ok(has(V.validateStyle({ ...clone(g), status, curation: [{ ...RESEARCH, result: "note" }] }), /needs a research-source entry/), `${status} with a note only`);
+  }
+  assert.deepEqual(V.validateStyle({ ...clone(g), status: "draft", curation: [] }), [], "a hermes draft needs no evidence");
+  // Never above trial, research-source or not.
+  for (const status of ["proven", "listed"]) {
+    const curation = [RESEARCH, { date: "2026-11-22", kind: "owner-review", ref: "PR", result: "approved", notes: "" }, { date: "2026-11-22", kind: "trial-run", ref: "run", result: "pass", notes: "" }];
+    assert.ok(has(V.validateStyle({ ...clone(g), status, curation }), /can be at most trial, never/), status);
+  }
+  // Another engine: research-source is refused, and it never stands in for the CI render.
+  const html = load("animated-line-graph");
+  const asHtml = { ...clone(html), status: "trial", curation: [RESEARCH] };
+  assert.ok(has(V.validateStyle(asHtml), /needs a passing ci-render entry/), "html-capture at trial with only research-source");
+  assert.ok(has(V.validateStyle(asHtml), /research-source is evidence for hermes packs only/));
+  assert.ok(has(V.validateStyle({ ...clone(load("documentary-stills")), curation: [...load("documentary-stills").curation, RESEARCH] }), /research-source is evidence for hermes packs only/), "even beside a real ci-render");
+  assert.ok(has(V.validateStyle({ ...clone(html), status: "draft", curation: [RESEARCH] }), /research-source is evidence for hermes packs only/), "even on a draft");
+});
+
+test("the hermes block: only on hermes packs, a skill name, a mode, how the plan maps to the input; project skills say how the narration is used", (t) => {
+  const g = load("hermes-graph");
+  assert.equal(g.hermes.skill, "/graph");
+  assert.ok(has(V.validateStyle({ ...clone(load("animated-line-graph")), hermes: clone(g.hermes) }), /hermes names the Hermes skill of a hermes pack/));
+  assert.ok(has(V.validateStyle({ ...clone(g), hermes: { ...g.hermes, skill: "graph" } }), /hermes.skill must be a Hermes skill as invoked/));
+  assert.ok(has(V.validateStyle({ ...clone(g), hermes: { ...g.hermes, mode: "quick" } }), /hermes.mode must be one of spec, project/));
+  assert.ok(has(V.validateStyle({ ...clone(g), hermes: { ...g.hermes, input: "" } }), /hermes.input must say/));
+  assert.ok(has(V.validateStyle({ ...clone(g), hermes: { ...g.hermes, colour: 1 } }), /hermes: unknown field "colour"/));
+  assert.ok(has(V.validateStyle({ ...clone(g), hermes: { ...g.hermes, aliases: ["/graph"] } }), /must not repeat the skill/));
+  const z = load("hermes-zach-d-films");
+  assert.deepEqual([z.hermes.skill, z.hermes.aliases, z.hermes.mode], ["/zach-d-films", ["/zach-3d-films"], "project"]);
+  assert.ok(has(V.validateStyle({ ...clone(z), hermes: { ...z.hermes, input: "Make the reel from the storyboard." } }), /project skill must say how the run's narration and captions are used/));
+  assert.deepEqual(V.validateStyle({ ...clone(load("hermes-research-explainer")) }), [], "the block is optional: the generic Hermes render names no skill");
+  // variantOf must name a pack in the repo.
+  const dir = scratch(t, ["hermes-graph"]);
+  assert.ok(has(V.validateRepo(dir).issues, /hermes.variantOf names "animated-line-graph", which is not a pack here/));
+  assert.deepEqual(V.validateRepo(scratch(t, ["hermes-graph", "animated-line-graph"])).issues, []);
+});
+
+test("one research pack per claude-animation-skills skill, pinned, credited and licensed; the alias is the same pack", () => {
+  const SKILLS = ["breakdown", "dan-koe", "graph", "kurzgesagt", "low-poly", "map-route", "minecraft", "minimalistic-graphics", "stick-figure", "zach-d-films"];
+  for (const skill of SKILLS) {
+    const id = `hermes-${skill}`;
+    const s = load(id);
+    assert.deepEqual([s.status, s.renderer.engine, s.hermes.skill], ["trial", "hermes", `/${skill}`], id);
+    assert.equal(s.hermes.mode, skill === "stick-figure" || skill === "zach-d-films" ? "project" : "spec", id);
+    const src = s.provenance.find((p) => p.type === "skill");
+    assert.ok(src && src.ref.startsWith("https://github.com/artemnovitckii/claude-animation-skills@86f70106c9aeae1334184467da5776c533ada3bc"), id);
+    assert.match(src.licence, /^MIT, Copyright \(c\) 2026 Artem Novitckii.*SIL Open Font License/, id);
+    assert.ok(s.curation.some((e) => e.kind === "research-source" && e.result === "pass" && /owner report: installed in Hermes and working/.test(e.ref)), id);
+    assert.ok(!s.curation.some((e) => e.kind === "ci-render"), `${id} claims no CI render`);
+    assert.match(readFileSync(path.join(ROOT, "packs", id, "README.md"), "utf8"), /by\n?\s*\[Artem Novitckii\]/, `${id} credits the author`);
+  }
+  assert.ok(!SKILLS.includes("zach-3d-films"));
+  assert.deepEqual(load("hermes-zach-d-films").hermes.aliases, ["/zach-3d-films"]);
+  assert.deepEqual(load("hermes-graph").hermes.variantOf, ["animated-line-graph"]);
+  assert.deepEqual(load("hermes-minimalistic-graphics").hermes.variantOf, ["minimal-line-art"]);
+});
+
+test("the two adaptations are at trial on real CI renders: this repo's and venstudio's", () => {
+  for (const id of ["animated-line-graph", "minimal-line-art"]) {
+    const s = load(id);
+    assert.deepEqual([s.status, s.version], ["trial", "0.1.1"], id);
+    const refs = s.curation.filter((e) => e.kind === "ci-render" && e.result === "pass").map((e) => e.ref);
+    assert.ok(refs.some((r) => r.includes("venturazz/venstudio/actions/runs/44981421800") && r.includes("055e029")), id);
+    assert.ok(refs.some((r) => r.includes("venturazz/venstudio-styles/actions/runs/44980615532")), id);
+  }
 });
 
 test("renderDigest is packDigest over render/ without the prefix, as a worker hashes html/<id>/", () => {
@@ -211,6 +297,7 @@ test("the JSON schema's enums are the validator's", () => {
   assert.deepEqual(p.curation.items.properties.kind.enum, V.CURATION_KINDS);
   assert.deepEqual(p.contract.properties.onScreen.properties.motionTokens.items.enum, V.MOTION_TOKENS);
   assert.deepEqual(schema.required.sort(), Object.keys(load("documentary-stills")).sort());
+  assert.deepEqual(p.hermes.properties.mode.enum, V.HERMES_MODES);
 });
 
 test("the assembler's generated files are stable", () => {

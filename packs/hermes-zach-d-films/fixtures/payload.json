@@ -1,0 +1,45 @@
+{
+  "format": "short",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "engine": "hermes",
+  "transitionSec": 0,
+  "hermesSkill": "/zach-d-films",
+  "shots": [
+    {
+      "shotRef": "shot-01",
+      "assetId": "asset-shot-01",
+      "seconds": 4,
+      "motion": "zoom-in"
+    },
+    {
+      "shotRef": "shot-02",
+      "assetId": "asset-shot-02",
+      "seconds": 4,
+      "motion": "pan-left"
+    }
+  ],
+  "narrationAssetId": "asset-narration",
+  "narrationSec": 8,
+  "durationSec": 8,
+  "targetLufs": -14,
+  "fontAssetId": null,
+  "inputs": [
+    "asset-shot-01",
+    "asset-shot-02",
+    "asset-narration"
+  ],
+  "captions": [
+    {
+      "start": 0,
+      "end": 4,
+      "text": "What the studio planned for this shot."
+    },
+    {
+      "start": 4,
+      "end": 8,
+      "text": "Hermes renders it with /zach-d-films."
+    }
+  ]
+}

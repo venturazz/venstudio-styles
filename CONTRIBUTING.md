@@ -24,6 +24,13 @@ Hermes and Kiro work here through pull requests. The owner merges. Nothing reach
 A `hermes` pack (Hermes renders with its own tools) is research only, by owner decision: it may go up to `trial` and
 no further, and the portal treats every run of it as a trial. The validator refuses anything above `trial`.
 
+A `hermes` pack has no CI render, because there is no Hermes in CI; do not invent one. To move it to `lab` or `trial`,
+add a `curation` entry of kind `research-source` with result `pass` that cites the source (for a skill: the repository
+URL at its commit and the skill's path) and the report that it renders in Hermes (for claude-animation-skills: the
+owner's report that the repository is installed in Hermes and works). The validator accepts `research-source` only for
+`hermes` packs; every other pack still needs a passing `ci-render` to leave `draft`. Name the skill in the pack's
+`hermes` block so the portal's render request carries it.
+
 `retired` takes a pack out of New Video; it stays in the repo so old runs remain explainable.
 
 ## Who may change status
