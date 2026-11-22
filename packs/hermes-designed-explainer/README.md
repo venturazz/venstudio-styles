@@ -24,8 +24,8 @@ simple animated element, light and dark scenes in turn, captions burned by the w
 The portal's validator (venstudio `apps/portal/lib/studio/html-design.ts`) refuses a page before anything runs when
 it breaks a rule, and the issues go back to Hermes: one self-contained `index.html` with inline CSS and JS (plus at
 most a few small JS, CSS or SVG files), 300 KB and 20 files at most, text only; no URL to another host anywhere
-(`http(s)://`, `//host`, `@import` of a host, `<base>`); `data:` URLs only for images and fonts; no `<iframe>`,
-`<object>`, `<embed>`, form actions, meta refresh, workers, service workers, `WebSocket`, `fetch`,
+(`http(s)://`, `//host`, `@import` of a host, `<base>`); `data:` URLs only for images; no `<iframe>`,
+`<object>`, `<embed>`, form actions, `<meta http-equiv>`, workers, service workers, `WebSocket`, `fetch`,
 `XMLHttpRequest`, `EventSource`, `sendBeacon`, `import()`, `eval` or `new Function`; it defines
 `window.VENSTUDIO = { init(props), renderFrame(frame) }`; fonts only from `../pack/fonts/` or the run's font; no GSAP.
 At render the worker serves only the page's own files, this pack's `render/` files (as `../pack/`) and the run's

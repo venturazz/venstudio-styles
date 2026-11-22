@@ -152,7 +152,8 @@ A run of an `html-design` pack uploads the page Hermes wrote as a job input. The
 `page/index.html`, next to `../pack/` (this pack's `render/` files, as installed and digest-checked) and `../in/` (the
 run's media: the plate, the font), and nothing else; every response carries
 `Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:`
-(plus `base-uri 'none'; form-action 'none'`). The browser profile is a fresh temporary folder with no extensions, each
+(plus `worker-src`, `child-src`, `frame-src`, `object-src`, `connect-src`, `manifest-src`, `base-uri` and `form-action`
+all `'none'`). Chromium's own process sandbox is on wherever the worker's host allows it. The browser profile is a fresh temporary folder with no extensions, each
 frame has a time limit and the whole capture a frame budget, and a page that throws in `init` or `renderFrame`, or
 tries the network in any way, fails the job by name. The pack's `render/index.html` is a reference page that follows
 the same rules; CI renders it from the fixture like any html-capture page.
