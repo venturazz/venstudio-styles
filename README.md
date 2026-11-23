@@ -8,6 +8,9 @@ at runtime and needs no GitHub token. Plan: venstudio `docs/plans/style-system.m
 | Path | What |
 | --- | --- |
 | `packs/<id>/` | One style pack: `style.json`, `README.md`, `fixtures/`, and `render/` when the engine has a render project. |
+| `skills/curated/<id>/`, `skills/candidate/<id>/` | The agent skills the styles are made with: curated (approved by the owner or Hermes) and not yet curated. Each holds `skill.json` and the skill's files. See `skills/README.md`. |
+| `skills/kits/<id>/` | Shared files several skills use (claude-animation-skills' `kit/`). |
+| `tools/skills.mjs` | Validates `skills/` and its links to the packs. |
 | `FORMAT.md` | The pack format, version 1. |
 | `schema/style.schema.json` | JSON Schema of `style.json`, for editors. |
 | `tools/validate.mjs` | The validator (zero dependencies). Vendored into venstudio; edit it only here. |
@@ -53,6 +56,7 @@ yet; the portal lists them as Planned.
 
 ```
 node tools/validate.mjs
+node tools/skills.mjs
 node --test "tools/*.test.mjs"   # includes html-pages.test.mjs: every html-capture page run in a stand-in DOM
 ```
 

@@ -8,3 +8,5 @@ package-lock.json
 out/
 *.log
 .DS_Store
+# A skill kit keeps its upstream npm lockfile (skills/README.md).
+!skills/kits/*/files/package-lock.json

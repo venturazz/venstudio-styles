@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "id": "zach-d-films",
+  "name": "/zach-d-films",
+  "version": "1.0.0",
+  "status": "candidate",
+  "aliases": [],
+  "description": "Makes a 3D cartoon \"what if\" explainer short (9:16) in the style of Zack D. Films-type videos, entirely in code with three.js. Procedural cartoon people, props and effects, a blue studio sky, slow-motion impacts, a red force-ripple overlay, quick whip cuts and 1 to 3 word captions timed to the voiceover. Use when the user runs /zach-d-films or asks for a 3D cartoon explainer, a \"could X stop Y\" or \"what if\" short with characters and props.",
+  "source": {
+    "repo": "https://github.com/artemnovitckii/claude-animation-skills",
+    "commit": "86f70106c9aeae1334184467da5776c533ada3bc",
+    "path": "skills/zach-d-films",
+    "licence": "MIT",
+    "copyright": "Copyright (c) 2026 Artem Novitckii"
+  },
+  "kit": "claude-animation-skills",
+  "entry": "SKILL.md",
+  "requires": [
+    "ffmpeg",
+    "node",
+    "npm",
+    "python3",
+    "chromium"
+  ],
+  "packs": [
+    "hermes-zach-d-films"
+  ],
+  "curation": [],
+  "notes": "Imported unchanged from upstream; not curated yet (skills/README.md). A full project with its own engine (files/engine/).",
+  "files": {
+    "SKILL.md": "eeda3e4a59e4f8cd5e873465303a84bd04ff8c6c3aef3aa5be16af94feee5744",
+    "engine/captions.py": "3e2cf1ca40889657523f6a56bd4804cce121d4b5dbb889b8e006b082c764737e",
+    "engine/index.html": "1166a7a23155ffa8894170b68248edf1276cffa4cd7479b973dca375913d47a1",
+    "engine/render.mjs": "8bcf3fd82e0a0b4648aa8ac2885b9bad9fdc63fdb943ab1fcb0d019aa686de48",
+    "engine/src/anim.js": "a79b96b3692c34d54bc186209ef6bac36c5ac34b2a954f182b186483d7a6dc49",
+    "engine/src/human.js": "5d92203e2e2cf1aab7e56b913216f0b41c480e522b3c1046334e91d890b080c8",
+    "engine/src/main.js": "d705e5218de60c2ab7627ccf44fb525c66928845b7492c29ccfe7764dd835428",
+    "engine/src/materials.js": "e761b1ff371a88382928d16bc708d12d8c5151fb46e77895ec32aff015bde4ac",
+    "engine/src/props.js": "fcea59d3e7de9eb67bcadc585e597f999cd5ec774b91592b45396eee4e9d71af",
+    "engine/src/shots.js": "91ee9aeb8c76cf0b6e4551c0cc44bf39c1bb67d79ba6b2f5e3bb1d8c92012954",
+    "engine/src/textures.js": "3558d0e2bf8281dbf06cf4727172c2e72cc35fb3d6d6ce3bab1a3462d0ad7751"
+  }
+}
