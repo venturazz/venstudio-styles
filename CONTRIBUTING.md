@@ -73,6 +73,13 @@ from the lockfile in the pack with `--ignore-scripts` (an `allowScripts` entry n
 `--require-hashes` lines only; the probe and render are fixed argv arrays; nothing needs root; no credentials, tokens,
 private URLs or private data anywhere in the pack; each tool's licence is recorded.
 
+## Skills
+
+The skills a hermes pack is made with live in `skills/` (`skills/README.md`). A skill is `candidate` until the owner
+or Hermes curates it: a PR moves it to `skills/curated/` with a curation entry (`by`, `result: "approved"`, `version`,
+`date`, `notes`). Every hermes pack's `hermes.skill` must be a skill here; `node tools/skills.mjs` checks it. A change to
+a skill's files bumps its `version` and needs a new approval if it is curated.
+
 ## Who may change status
 
 - Anyone (Hermes, Kiro, the owner) may open a PR that adds a draft or moves a pack to `lab` or `trial`, with the

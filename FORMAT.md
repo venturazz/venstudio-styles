@@ -186,6 +186,12 @@ the skill uses the run's narration and captions; with `"skill"` it records its o
 and names the voice backend in its reply; the result is a reel the studio QCs. The reply is checked exactly as without a skill (a `/clip/` URL on the media host, downloaded, sniffed, then
 qc-video), and the video's provenance records the backend, the plugin and the skill.
 
+## Skills
+
+A hermes pack's `hermes.skill` must name a skill in `skills/curated/` or `skills/candidate/` (`skills/README.md`,
+checked by `tools/skills.mjs`). The pack holds the contract and the mapping; the skill folder holds the skill's own
+files and their sha256.
+
 ## Environments (worker 0.12.0+)
 
 An `environment` names the exact tools a pack renders with, so a worker can install them by itself and nothing is

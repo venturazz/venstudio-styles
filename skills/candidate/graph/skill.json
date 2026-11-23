@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "id": "graph",
+  "name": "/graph",
+  "version": "1.0.0",
+  "status": "candidate",
+  "aliases": [],
+  "description": "Makes a minimal line-graph animation for a reel. A smooth black line draws itself on white (or white on black) while one big number counts up with the tip, then lands on the final value. Use when the user runs /graph or asks for a growth chart, a \"0 to 100K\" number animation or an animated stat.",
+  "source": {
+    "repo": "https://github.com/artemnovitckii/claude-animation-skills",
+    "commit": "86f70106c9aeae1334184467da5776c533ada3bc",
+    "path": "skills/graph",
+    "licence": "MIT",
+    "copyright": "Copyright (c) 2026 Artem Novitckii"
+  },
+  "kit": "claude-animation-skills",
+  "entry": "SKILL.md",
+  "requires": [
+    "ffmpeg",
+    "node"
+  ],
+  "packs": [
+    "hermes-graph"
+  ],
+  "curation": [],
+  "notes": "Imported unchanged from upstream; not curated yet (skills/README.md). A quick skill.",
+  "files": {
+    "SKILL.md": "38de05a8476445451d9bb71fdc6982aee8478f1f83fcb6a4328a9e3b41d97021",
+    "build.py": "734b3dd038f63045b116a760b7f76cda176f64baeb4032d4270915376d52453c",
+    "template.html": "f8a1427f6c189113d5eba0f4d28c4cbfc2791958b9981cf905854d9bbd74b599"
+  }
+}

@@ -26,6 +26,8 @@ jobs:
           node runtime/html-capture/venstudio-worker.ts help > /dev/null
       - name: Validate every pack (style.json, README, provenance, fixtures, render projects)
         run: node tools/validate.mjs
+      - name: Validate every skill and kit (skills/README.md), and that every hermes pack's skill is here
+        run: node tools/skills.mjs
       - name: Validator unit tests
         run: node --test "tools/*.test.mjs"
 
