@@ -25,11 +25,16 @@ export const OWNER_STATUSES = ["proven", "listed"];
 export const RENDERED_STATUSES = ["lab", "trial", "proven", "listed"];
 
 /** Renderer engines, the keys of ENGINES in venstudio apps/portal/lib/studio/catalog.ts (a venstudio test checks). */
-export const ENGINES = ["ffmpeg-stills", "remotion-2d", "html-capture", "hermes", "sprite-rig", "manim", "godot-2d", "remotion-3d", "godot-3d", "blender-cycles", "provider-video"];
+export const ENGINES = ["ffmpeg-stills", "remotion-2d", "html-capture", "hermes", "command", "sprite-rig", "manim", "godot-2d", "remotion-3d", "godot-3d", "blender-cycles", "provider-video"];
 /** Engines VenStudio can run today (hermes by the portal, the rest by a worker). A pack for any other engine stays draft (or retired). */
-export const RUNNABLE_ENGINES = ["ffmpeg-stills", "remotion-2d", "html-capture", "hermes"];
+export const RUNNABLE_ENGINES = ["ffmpeg-stills", "remotion-2d", "html-capture", "hermes", "command"];
 /** Engines whose packs carry a render project in render/. */
-export const PROJECT_ENGINES = ["remotion-2d", "html-capture"];
+export const PROJECT_ENGINES = ["remotion-2d", "html-capture", "command"];
+/**
+ * Engines whose packs must carry an `environment` (FORMAT.md "Environments"): engine command runs the pack's own render
+ * argv with the tools its recipe installs (worker 0.12.0+). Other worker engines may declare one for extra tools.
+ */
+export const ENVIRONMENT_ENGINES = ["command"];
 /** Engines whose render project is a Remotion composition named in renderer.composition. */
 export const COMPOSITION_ENGINES = ["remotion-2d"];
 /**
@@ -158,9 +163,9 @@ const PATH_RE = /^[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$/;
 /** A Hermes skill as it is invoked, e.g. "/graph". */
 const SKILL_RE = /^\/[a-z0-9][a-z0-9-]{0,62}$/;
 
-const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "family", "formats", "renderer", "contract", "portal", "fixture", "provenance", "curation", "hermes", "workflow", "design"];
+const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "family", "formats", "renderer", "contract", "portal", "fixture", "provenance", "curation", "hermes", "workflow", "design", "environment"];
 /** Top-level fields a pack may leave out. */
-export const OPTIONAL_TOP_KEYS = ["hermes", "workflow", "design"];
+export const OPTIONAL_TOP_KEYS = ["hermes", "workflow", "design", "environment"];
 const DESIGN_KEYS = ["brief", "palette", "typography", "layout"];
 const HERMES_KEYS = ["skill", "aliases", "mode", "voice", "input", "output", "variantOf"];
 const WORKFLOW_KEYS = ["recipe", "review"];
@@ -247,7 +252,7 @@ function checkRange(v, at, issues, { min = 0, integer = false } = {}) {
  * Validates a parsed style.json. `dirName` is the pack's directory name (the id must match it). Returns plain-text
  * problems; an empty list means valid. Never throws on bad input.
  */
-export function validateStyle(style, { dirName } = {}) {
+export function validateStyle(style, { dirName, files } = {}) {
   const issues = [];
   if (!isRecord(style)) return ["style.json must be a JSON object"];
   checkKeys(style, TOP_KEYS, "style.json", issues);
@@ -381,6 +386,24 @@ export function validateStyle(style, { dirName } = {}) {
     if (!designed) issues.push(`design is the brief Hermes designs each page from; it is only for workflow.recipe ${RESEARCH_RECIPES.join(" or ")}`);
     for (const m of validateDesignBlock(style.design)) issues.push(m);
   } else if (designed) issues.push("an html-design pack needs a design block (brief, palette, typography, layout): it is what Hermes designs each page from");
+
+  const engineName = isRecord(style.renderer) ? style.renderer.engine : undefined;
+  if (style.environment !== undefined) {
+    if (RESEARCH_ENGINES.includes(engineName)) {
+      issues.push("environment is for packs a worker renders; a hermes pack renders in Hermes with Hermes's own tools and carries none (hand the style over as an engine command pack instead: docs/hermes-handover.md)");
+    }
+    if (designed) issues.push("environment is refused on an html-design pack: research only, its page runs in the worker's capture and nothing else");
+    for (const m of validateEnvironment(style.environment, { files })) issues.push(m);
+    const env = style.environment;
+    if (isRecord(env) && ENVIRONMENT_ENGINES.includes(engineName) && env.render === undefined) issues.push("environment.render is required for engine command: the argv the worker runs to render");
+    if (isRecord(env) && !ENVIRONMENT_ENGINES.includes(engineName) && env.render !== undefined) issues.push(`environment.render is only for engine command; ${String(engineName)} renders with its own renderer and uses the environment for extra tools`);
+    const v = isRecord(style.renderer) ? style.renderer.minWorkerVersion : undefined;
+    if (typeof v !== "string" || !WORKER_VERSION_RE.test(v) || compareVersions(v, ENV_MIN_WORKER) < 0) {
+      issues.push(`renderer.minWorkerVersion must be ${ENV_MIN_WORKER} or later for a pack with an environment (the first worker that installs one; an older worker would report the pack without it)`);
+    }
+  } else if (ENVIRONMENT_ENGINES.includes(engineName)) {
+    issues.push("engine command needs an environment: the recipe of the exact tools it renders with (FORMAT.md \"Environments\", docs/hermes-handover.md)");
+  }
 
   if (!Array.isArray(style.provenance) || style.provenance.length === 0) issues.push("provenance must list at least one source the look was learned from");
   else {
@@ -522,6 +545,347 @@ export function validateHermesBlock(h) {
   return issues;
 }
 
+// ---------------------------------------------------------------------------
+// Environments (FORMAT.md "Environments"): the exact tools a pack needs, as a declarative recipe a worker (0.12.0+)
+// installs by itself into <home>/envs/<id>@<version>/. There is no free shell anywhere in it: a step is a download
+// pinned by sha256, an npm install from a lockfile shipped in the pack, a pip install with --require-hashes, or a
+// PATH-like variable; the probe and the render are fixed argv arrays with placeholders from a closed set. The worker
+// parses the recipe again with its own reader (venstudio-worker.ts parseEnvironment) and refuses what this refuses.
+
+/** Platforms a recipe may name. A worker installs a recipe only on a platform it lists. */
+export const ENV_PLATFORMS = ["linux-x64", "linux-arm64"];
+/** Archive kinds a download may be; "none" keeps the file as downloaded. */
+export const ENV_EXTRACTS = ["tar.gz", "tar.xz", "zip", "none"];
+/** Things a recipe may require of the machine. They are checked, never installed. */
+export const ENV_REQUIRE_TOOLS = ["node", "npm", "python3", "ffmpeg", "glibc", "lib"];
+/** Variables an env step may extend, with directories inside the environment (prepended). */
+export const ENV_PATH_VARS = ["PATH", "LD_LIBRARY_PATH", "PYTHONPATH", "NODE_PATH"];
+/** Every placeholder a render argv may hold. */
+export const ENV_PLACEHOLDERS = ["props", "out", "width", "height", "fps", "frames", "packDir", "envDir", "inDir", "workDir"];
+/** The placeholders a probe may hold (it runs at install time, with no job). */
+export const ENV_PROBE_PLACEHOLDERS = ["packDir", "envDir", "workDir"];
+/** What argv[0] may be: the worker's own node, the environment's venv python, the worker's ffmpeg, or {envDir}/<file>. */
+export const ENV_PROGRAMS = ["node", "python", "ffmpeg"];
+export const ENV_OUTPUTS = ["mp4-muted", "png-frames"];
+export const ENV_CAPTIONS = ["worker", "renderer"];
+/** The narration and the audio mix are always the worker's shared steps. */
+export const ENV_AUDIO = ["worker"];
+export const ENV_LIMITS = {
+  steps: 16,
+  hosts: 16,
+  downloadBytes: 512 * 1024 * 1024,
+  totalDownloadBytes: 1024 * 1024 * 1024,
+  argv: 64,
+  arg: 400,
+  probeTimeoutSec: 300,
+  secondsPerVideoSecond: 600,
+  stripComponents: 8,
+  requirements: 400,
+  npmPackages: 2000,
+};
+/** The hosts pip reaches: the index and the files host. */
+export const PIP_HOSTS = ["pypi.org", "files.pythonhosted.org"];
+/** The first worker that installs environments and runs engine command. */
+export const ENV_MIN_WORKER = "0.12.0";
+/** Files a command render project may hold: text only, because the worker bundle carries text. */
+export const COMMAND_RENDER_FILE_RE = /\.(mjs|cjs|js|json|py|txt|md|svg|css|html|glsl|gd|tscn|tres|toml|ya?ml)$|(^|\/)LICEN[CS]E[^/]*$|(^|\/)NOTICE[^/]*$/;
+/** Files env/ may hold: the lockfiles the recipe names, and licences. */
+export const ENV_FILE_RE = /^env\/([A-Za-z0-9_-]+\/)?(package\.json|package-lock\.json|requirements[A-Za-z0-9_.-]*\.txt|LICEN[CS]E[^/]*|NOTICE[^/]*|README\.md)$/;
+
+const HOST_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const SHA256_RE = /^[0-9a-f]{64}$/;
+const MIN_VERSION_RE = /^\d{1,4}(\.\d{1,4}){0,2}$/;
+const SONAME_RE = /^lib[A-Za-z0-9_.+-]{1,80}\.so(\.\d{1,4}){0,3}$/;
+const NPM_NAME_RE = /^(@[a-z0-9][a-z0-9._-]{0,100}\/)?[a-z0-9][a-z0-9._-]{0,213}$/;
+const PLACEHOLDER_RE = /\{([^{}]*)\}/g;
+/** Programs that would raise privileges or open a shell; refused anywhere in an argv, not only as argv[0]. */
+const FORBIDDEN_PROGRAMS = ["sudo", "su", "doas", "pkexec", "sh", "bash", "dash", "zsh", "env", "chroot", "setpriv", "unshare", "nsenter", "runuser"];
+/** Inline-code flags: code lives in files of the pack, where review and CI see it. */
+const INLINE_CODE_FLAGS = { node: ["-e", "--eval", "-p", "--print", "-r", "--require", "--import", "--loader", "--experimental-loader"], python: ["-c"] };
+
+/**
+ * A path inside the pack or the environment: relative, plain characters, no "." or ".." segments, no backslash.
+ * Absolute paths, "~" and anything that could leave the directory are refused.
+ */
+export function isSafeRelPath(p, { allowDot = false } = {}) {
+  if (typeof p !== "string") return false;
+  if (allowDot && p === ".") return true;
+  if (!PATH_RE.test(p) || p.length > 200 || p.endsWith("/")) return false;
+  return p.split("/").every((s) => s !== "" && s !== "." && s !== "..");
+}
+
+/** Placeholders an argv element names (without braces), and whether its braces are all well formed. */
+export function argPlaceholders(arg) {
+  const names = [];
+  for (const m of String(arg).matchAll(PLACEHOLDER_RE)) names.push(m[1]);
+  const rest = String(arg).replace(PLACEHOLDER_RE, "");
+  return { names, stray: rest.includes("{") || rest.includes("}") };
+}
+
+/** Checks one fixed argv: a known program, placeholders from `allowed` only, no shell, no privilege change. */
+export function validateArgv(argv, at, { allowed = ENV_PLACEHOLDERS, hasVenv = false } = {}) {
+  const issues = [];
+  if (!Array.isArray(argv) || argv.length < 1 || argv.length > ENV_LIMITS.argv) return [`${at} must be an argv array of 1..${ENV_LIMITS.argv} strings (a fixed command, not a shell string)`];
+  argv.forEach((a, i) => {
+    if (typeof a !== "string" || a.length === 0 || a.length > ENV_LIMITS.arg || /[\0\n\r]/.test(a)) {
+      issues.push(`${at}[${i}] must be a non-empty string of up to ${ENV_LIMITS.arg} characters on one line`);
+      return;
+    }
+    const { names, stray } = argPlaceholders(a);
+    if (stray) issues.push(`${at}[${i}] has a brace that is not a placeholder; placeholders are ${allowed.map((n) => `{${n}}`).join(", ")}`);
+    for (const n of names) if (!allowed.includes(n)) issues.push(`${at}[${i}]: {${n}} is not a placeholder here (allowed: ${allowed.map((x) => `{${x}}`).join(", ")})`);
+    const base = a.split("/").pop();
+    if (FORBIDDEN_PROGRAMS.includes(a) || (i === 0 && FORBIDDEN_PROGRAMS.includes(base))) issues.push(`${at}[${i}]: ${a} is refused (no shell, no sudo or root, no namespace tricks: the worker runs the argv as its own user)`);
+  });
+  const prog = argv[0];
+  if (typeof prog === "string") {
+    if (prog.startsWith("{envDir}/")) {
+      if (!isSafeRelPath(prog.slice("{envDir}/".length))) issues.push(`${at}[0] must be {envDir}/<a relative path inside the environment>`);
+    } else if (!ENV_PROGRAMS.includes(prog)) {
+      issues.push(`${at}[0] must be ${ENV_PROGRAMS.join(", ")} or {envDir}/<file> (got ${JSON.stringify(prog)}); a program on the machine's PATH is not part of the recipe`);
+    }
+    if (prog === "python" && !hasVenv) issues.push(`${at}[0] python needs a pip step: it is the environment's own venv python`);
+    const inline = INLINE_CODE_FLAGS[prog] ?? [];
+    for (const a of argv.slice(1)) if (inline.includes(a)) issues.push(`${at}: ${prog} ${a} runs inline code; put the code in a file of the pack and pass its path`);
+  }
+  return issues;
+}
+
+/**
+ * Validates style.json `environment`. `files` (pack-relative path -> text) lets it check the lockfiles the steps
+ * name; without it only the shape is checked. Returns plain-text problems.
+ */
+export function validateEnvironment(env, { files } = {}) {
+  const issues = [];
+  if (!isRecord(env)) return ["environment must be an object (id, version, platforms, hosts, requires, steps, probe, licences)"];
+  checkKeys(env, ["id", "version", "platforms", "hosts", "requires", "steps", "probe", "render", "licences"], "environment", issues);
+  if (typeof env.id !== "string" || !ID_RE.test(env.id)) issues.push("environment.id must be lowercase letters, digits and dashes (2..63 characters)");
+  if (typeof env.version !== "string" || !SEMVER_RE.test(env.version)) issues.push("environment.version must be semver MAJOR.MINOR.PATCH (bump it whenever a step changes)");
+  if (!Array.isArray(env.platforms) || env.platforms.length < 1 || !env.platforms.every((p) => ENV_PLATFORMS.includes(p)) || new Set(env.platforms).size !== env.platforms.length) {
+    issues.push(`environment.platforms must list ${ENV_PLATFORMS.join(" and/or ")} (no repeats)`);
+  } else if (!env.platforms.includes("linux-x64")) issues.push("environment.platforms must include linux-x64 (the platform of Muse and of CI)");
+  const hosts = Array.isArray(env.hosts) ? env.hosts : [];
+  if (!Array.isArray(env.hosts) || env.hosts.length > ENV_LIMITS.hosts || !env.hosts.every((h) => typeof h === "string" && HOST_RE.test(h)) || new Set(env.hosts).size !== env.hosts.length) {
+    issues.push(`environment.hosts must list up to ${ENV_LIMITS.hosts} exact host names (lowercase, no scheme, no port, no wildcard): every host the install may reach, redirects included`);
+  }
+
+  const requires = Array.isArray(env.requires) ? env.requires : [];
+  if (!Array.isArray(env.requires) || env.requires.length > 16) issues.push("environment.requires must be a list (up to 16) of things the machine must already have");
+  requires.forEach((r, i) => {
+    const at = `environment.requires[${i}]`;
+    if (!isRecord(r)) return issues.push(`${at} must be an object { tool, min?, name? }`);
+    checkKeys(r, ["tool", "min", "name"], at, issues);
+    if (!ENV_REQUIRE_TOOLS.includes(r.tool)) issues.push(`${at}.tool must be one of ${ENV_REQUIRE_TOOLS.join(", ")} (checked, never installed)`);
+    if (r.min !== undefined && (typeof r.min !== "string" || !MIN_VERSION_RE.test(r.min))) issues.push(`${at}.min must be a version like 3.10`);
+    if (r.tool === "lib" && (typeof r.name !== "string" || !SONAME_RE.test(r.name))) issues.push(`${at}.name must be a shared library file name like libcairo.so.2`);
+    if (r.tool !== "lib" && r.name !== undefined) issues.push(`${at}.name is only for tool lib`);
+    if (r.tool === "lib" && r.min !== undefined) issues.push(`${at}.min is not checked for a library; name the soname instead`);
+  });
+  const needs = (tool) => requires.some((r) => isRecord(r) && r.tool === tool);
+
+  const steps = Array.isArray(env.steps) ? env.steps : [];
+  if (!Array.isArray(env.steps) || env.steps.length < 1 || env.steps.length > ENV_LIMITS.steps) issues.push(`environment.steps must list 1..${ENV_LIMITS.steps} steps`);
+  let total = 0;
+  let venv = false;
+  const targets = new Set();
+  steps.forEach((s, i) => {
+    const at = `environment.steps[${i}]`;
+    if (!isRecord(s) || Object.keys(s).length !== 1) return issues.push(`${at} must be exactly one of { download }, { npm }, { pip }, { env } (there is no shell step)`);
+    const [kind] = Object.keys(s);
+    const v = s[kind];
+    if (!["download", "npm", "pip", "env"].includes(kind)) return issues.push(`${at}: "${kind}" is not a step; the steps are download, npm, pip and env (there is no shell, script or sudo step)`);
+    if (!isRecord(v)) return issues.push(`${at}.${kind} must be an object`);
+    const sat = `${at}.${kind}`;
+    if (kind === "download") {
+      checkKeys(v, ["url", "sha256", "bytes", "extract", "stripComponents", "to", "executable", "platform"], sat, issues);
+      let url = null;
+      try {
+        url = new URL(String(v.url));
+      } catch {}
+      if (!url || typeof v.url !== "string" || v.url.length > 1000) issues.push(`${sat}.url must be a URL`);
+      else {
+        if (url.protocol !== "https:") issues.push(`${sat}.url must be https`);
+        if (url.username || url.password) issues.push(`${sat}.url must not carry credentials`);
+        if (url.port) issues.push(`${sat}.url must use the default https port`);
+        if (!hosts.includes(url.hostname)) issues.push(`${sat}.url host ${url.hostname} is not in environment.hosts`);
+      }
+      if (typeof v.sha256 !== "string" || !SHA256_RE.test(v.sha256)) issues.push(`${sat}.sha256 is required: the lowercase hex sha256 of the exact file (never invented; see docs/hermes-handover.md)`);
+      if (!Number.isInteger(v.bytes) || v.bytes < 1 || v.bytes > ENV_LIMITS.downloadBytes) issues.push(`${sat}.bytes must be the exact size in bytes, 1..${ENV_LIMITS.downloadBytes}`);
+      else total += v.bytes;
+      if (!ENV_EXTRACTS.includes(v.extract)) issues.push(`${sat}.extract must be one of ${ENV_EXTRACTS.join(", ")}`);
+      if (v.stripComponents !== undefined && (!Number.isInteger(v.stripComponents) || v.stripComponents < 0 || v.stripComponents > ENV_LIMITS.stripComponents || v.extract === "none")) {
+        issues.push(`${sat}.stripComponents must be 0..${ENV_LIMITS.stripComponents}, and only for an archive`);
+      }
+      if (!isSafeRelPath(v.to, { allowDot: v.extract !== "none" })) issues.push(`${sat}.to must be a relative path inside the environment (no absolute path, no ".."): a directory for an archive, a file for extract none`);
+      else if (targets.has(v.to)) issues.push(`${sat}.to ${v.to} is the target of another step`);
+      else targets.add(v.to);
+      if (v.executable !== undefined && (typeof v.executable !== "boolean" || v.extract !== "none")) issues.push(`${sat}.executable is true or false, and only for extract none (an archive keeps its own modes)`);
+      if (v.platform !== undefined && !(Array.isArray(env.platforms) && env.platforms.includes(v.platform))) issues.push(`${sat}.platform must be one of environment.platforms`);
+    } else if (kind === "npm") {
+      checkKeys(v, ["lockfile", "to", "allowScripts"], sat, issues);
+      if (!isSafeRelPath(v.lockfile) || !/^env\/(.+\/)?package-lock\.json$/.test(v.lockfile)) issues.push(`${sat}.lockfile must name env/[<dir>/]package-lock.json in the pack (package.json beside it)`);
+      if (!isSafeRelPath(v.to)) issues.push(`${sat}.to must be a relative directory inside the environment`);
+      else if (targets.has(v.to)) issues.push(`${sat}.to ${v.to} is the target of another step`);
+      else targets.add(v.to);
+      if (v.allowScripts !== undefined && (!Array.isArray(v.allowScripts) || v.allowScripts.length > 8 || !v.allowScripts.every((n) => typeof n === "string" && NPM_NAME_RE.test(n)))) {
+        issues.push(`${sat}.allowScripts must list up to 8 npm package names whose install scripts truly must run (everything else installs with --ignore-scripts)`);
+      }
+      if (!needs("npm")) issues.push(`${sat} needs { "tool": "npm" } in environment.requires`);
+      if (files && typeof v.lockfile === "string") for (const m of validateNpmLock(files, v.lockfile, hosts, v.allowScripts ?? [])) issues.push(`${sat}: ${m}`);
+    } else if (kind === "pip") {
+      checkKeys(v, ["requirements", "python", "to"], sat, issues);
+      if (!isSafeRelPath(v.requirements) || !/^env\/(.+\/)?requirements[A-Za-z0-9_.-]*\.txt$/.test(v.requirements)) issues.push(`${sat}.requirements must name env/[<dir>/]requirements*.txt in the pack`);
+      if (typeof v.python !== "string" || !MIN_VERSION_RE.test(v.python)) issues.push(`${sat}.python must be the lowest python3 version it needs, like 3.10`);
+      if (!isSafeRelPath(v.to)) issues.push(`${sat}.to must be a relative directory inside the environment (the venv)`);
+      else if (targets.has(v.to)) issues.push(`${sat}.to ${v.to} is the target of another step`);
+      else targets.add(v.to);
+      if (venv) issues.push(`${sat}: one pip step per environment (one venv)`);
+      venv = true;
+      if (!needs("python3")) issues.push(`${sat} needs { "tool": "python3", "min": "${typeof v.python === "string" ? v.python : "3.10"}" } in environment.requires`);
+      for (const h of PIP_HOSTS) if (!hosts.includes(h)) issues.push(`${sat} needs ${h} in environment.hosts (pip downloads from PyPI)`);
+      if (files && typeof v.requirements === "string") for (const m of validateRequirements(files[v.requirements])) issues.push(`${sat}: ${v.requirements}: ${m}`);
+    } else {
+      const names = Object.keys(v);
+      if (names.length < 1 || names.length > ENV_PATH_VARS.length) issues.push(`${sat} must set 1..${ENV_PATH_VARS.length} of ${ENV_PATH_VARS.join(", ")}`);
+      for (const n of names) {
+        if (!ENV_PATH_VARS.includes(n)) {
+          issues.push(`${sat}: ${n} is not one of ${ENV_PATH_VARS.join(", ")} (only PATH-like additions inside the environment; LD_PRELOAD, NODE_OPTIONS and the like are refused)`);
+          continue;
+        }
+        const list = Array.isArray(v[n]) ? v[n] : [v[n]];
+        if (list.length < 1 || list.length > 8 || !list.every((x) => isSafeRelPath(x, { allowDot: true }))) issues.push(`${sat}.${n} must be one or a list of up to 8 relative directories inside the environment`);
+      }
+    }
+  });
+  if (total > ENV_LIMITS.totalDownloadBytes) issues.push(`environment downloads add up to ${total} bytes; the limit is ${ENV_LIMITS.totalDownloadBytes}`);
+  if (steps.some((s) => isRecord(s) && isRecord(s.download)) && hosts.length === 0) issues.push("environment.hosts must list the hosts the downloads come from");
+
+  const p = env.probe;
+  if (!isRecord(p)) issues.push("environment.probe must be an object { argv, timeoutSec, exitCode, stdout? }: the worker reports the environment only after it passes");
+  else {
+    checkKeys(p, ["argv", "timeoutSec", "exitCode", "stdout"], "environment.probe", issues);
+    for (const m of validateArgv(p.argv, "environment.probe.argv", { allowed: ENV_PROBE_PLACEHOLDERS, hasVenv: venv })) issues.push(m);
+    if (!Number.isInteger(p.timeoutSec) || p.timeoutSec < 1 || p.timeoutSec > ENV_LIMITS.probeTimeoutSec) issues.push(`environment.probe.timeoutSec must be 1..${ENV_LIMITS.probeTimeoutSec}`);
+    if (!Number.isInteger(p.exitCode) || p.exitCode < 0 || p.exitCode > 255) issues.push("environment.probe.exitCode must be the expected exit code, 0..255");
+    if (p.stdout !== undefined) {
+      let ok = typeof p.stdout === "string" && p.stdout.length > 0 && p.stdout.length <= 200;
+      if (ok) {
+        try {
+          new RegExp(p.stdout);
+        } catch {
+          ok = false;
+        }
+      }
+      if (!ok) issues.push("environment.probe.stdout must be a regular expression of up to 200 characters that the probe's output must match");
+    }
+  }
+
+  if (env.render !== undefined) {
+    const r = env.render;
+    if (!isRecord(r)) issues.push("environment.render must be an object { argv, secondsPerVideoSecond, output, captions, audio }");
+    else {
+      checkKeys(r, ["argv", "secondsPerVideoSecond", "output", "captions", "audio"], "environment.render", issues);
+      for (const m of validateArgv(r.argv, "environment.render.argv", { allowed: ENV_PLACEHOLDERS, hasVenv: venv })) issues.push(m);
+      const outs = Array.isArray(r.argv) ? r.argv.filter((a) => typeof a === "string" && a.includes("{out}")).length : 0;
+      if (outs === 0) issues.push("environment.render.argv must pass {out}: where the render writes its video or frames");
+      if (!isNum(r.secondsPerVideoSecond) || r.secondsPerVideoSecond < 1 || r.secondsPerVideoSecond > ENV_LIMITS.secondsPerVideoSecond) issues.push(`environment.render.secondsPerVideoSecond must be 1..${ENV_LIMITS.secondsPerVideoSecond} (the render's time limit per second of video)`);
+      if (!ENV_OUTPUTS.includes(r.output)) issues.push(`environment.render.output must be ${ENV_OUTPUTS.join(" or ")} (png-frames: <out>/000000.png and on, encoded by the worker)`);
+      if (!ENV_CAPTIONS.includes(r.captions)) issues.push(`environment.render.captions must be ${ENV_CAPTIONS.join(" or ")} (worker: the worker burns the job's captions afterwards)`);
+      if (!ENV_AUDIO.includes(r.audio)) issues.push('environment.render.audio must be "worker": the narration and the audio mix are always the worker\'s shared steps');
+    }
+  }
+
+  if (!Array.isArray(env.licences) || env.licences.length < 1 || env.licences.length > 32) issues.push("environment.licences must list every tool the recipe installs, with its licence (1..32 entries)");
+  else {
+    env.licences.forEach((l, i) => {
+      const at = `environment.licences[${i}]`;
+      if (!isRecord(l)) return issues.push(`${at} must be an object { tool, version, licence, source, notes? }`);
+      checkKeys(l, ["tool", "version", "licence", "source", "notes"], at, issues);
+      if (!isText(l.tool, 80)) issues.push(`${at}.tool must name the tool`);
+      if (!isText(l.version, 40)) issues.push(`${at}.version must be the exact version installed`);
+      if (!isText(l.licence, 200)) issues.push(`${at}.licence must record the tool's licence (SPDX id or the terms)`);
+      if (typeof l.source !== "string" || !/^https:\/\/[^\s]{4,400}$/.test(l.source)) issues.push(`${at}.source must be the https URL of the tool's source or release`);
+      if (l.notes !== undefined && (typeof l.notes !== "string" || l.notes.length > LIMITS.text)) issues.push(`${at}.notes must be a text`);
+    });
+  }
+  return issues;
+}
+
+/** An npm lockfile shipped in the pack: v2 or v3, every package pinned to an https tarball on a listed host with an sha512 integrity. */
+export function validateNpmLock(files, lockfile, hosts, allowScripts = []) {
+  const issues = [];
+  const dir = lockfile.slice(0, -"package-lock.json".length);
+  const pkgText = files[`${dir}package.json`];
+  const lockText = files[lockfile];
+  if (typeof pkgText !== "string") issues.push(`${dir}package.json is missing beside the lockfile`);
+  if (typeof lockText !== "string") return [...issues, `${lockfile} is missing from the pack`];
+  let lock;
+  try {
+    lock = JSON.parse(lockText);
+  } catch (err) {
+    return [...issues, `${lockfile} is not JSON: ${err.message}`];
+  }
+  if (!isRecord(lock) || ![2, 3].includes(lock.lockfileVersion) || !isRecord(lock.packages)) return [...issues, `${lockfile} must be an npm lockfile v2 or v3 with "packages"`];
+  const entries = Object.entries(lock.packages).filter(([k]) => k !== "");
+  if (entries.length === 0) issues.push(`${lockfile} installs no package`);
+  if (entries.length > ENV_LIMITS.npmPackages) issues.push(`${lockfile} lists more than ${ENV_LIMITS.npmPackages} packages`);
+  for (const [k, e] of entries) {
+    if (!k.startsWith("node_modules/") || k.split("/").some((s) => s === ".." || s === ".")) {
+      issues.push(`${lockfile}: "${k}" is not a node_modules package (workspaces and local paths are refused)`);
+      continue;
+    }
+    if (!isRecord(e)) continue;
+    if (e.link === true) issues.push(`${lockfile}: ${k} is a link to a local path; refused`);
+    let url = null;
+    try {
+      url = new URL(String(e.resolved));
+    } catch {}
+    if (!url || url.protocol !== "https:") issues.push(`${lockfile}: ${k} must be resolved to an https tarball`);
+    else if (!hosts.includes(url.hostname)) issues.push(`${lockfile}: ${k} comes from ${url.hostname}, which is not in environment.hosts`);
+    if (typeof e.integrity !== "string" || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(e.integrity)) issues.push(`${lockfile}: ${k} has no sha512 integrity (npm checks every tarball against it)`);
+  }
+  // A package with an install script installs without it (--ignore-scripts) unless allowScripts names it; a name there
+  // that the lockfile does not have is a mistake.
+  const names = new Set(entries.map(([k]) => k.slice(k.lastIndexOf("node_modules/") + "node_modules/".length)));
+  for (const n of allowScripts) if (!names.has(n)) issues.push(`allowScripts names ${n}, which ${lockfile} does not install`);
+  if (typeof pkgText === "string") {
+    try {
+      const pkg = JSON.parse(pkgText);
+      if (isRecord(pkg.scripts) && Object.keys(pkg.scripts).some((s) => /^(pre|post)?(install|prepare|preinstall|postinstall)$/.test(s))) {
+        issues.push(`${dir}package.json must not have install or prepare scripts (they would run code at install)`);
+      }
+    } catch (err) {
+      issues.push(`${dir}package.json is not JSON: ${err.message}`);
+    }
+  }
+  return issues;
+}
+
+/**
+ * A pip requirements file for `pip install --require-hashes --only-binary=:all: --no-deps`: every requirement pinned
+ * with == and at least one --hash=sha256:, no options (no other index, no URL, no editable install).
+ */
+export function validateRequirements(text) {
+  if (typeof text !== "string") return ["the requirements file is missing from the pack"];
+  const issues = [];
+  const joined = text.replace(/\\\r?\n/g, " ");
+  let count = 0;
+  for (const raw of joined.split(/\r?\n/)) {
+    const line = raw.replace(/(^|\s)#.*$/, "").trim();
+    if (!line) continue;
+    count++;
+    if (/^-/.test(line)) {
+      issues.push(`"${line.slice(0, 60)}": options are refused (no -i, --index-url, --extra-index-url, -f, -e, -r); pip runs with PyPI and --require-hashes only`);
+      continue;
+    }
+    const m = /^([A-Za-z0-9][A-Za-z0-9._-]*)(\[[A-Za-z0-9,._-]+\])?==([A-Za-z0-9.!+_-]+)(\s*;[^-]*)?((\s+--hash=sha256:[0-9a-f]{64})+)\s*$/.exec(line);
+    if (!m) issues.push(`"${line.slice(0, 80)}" must be name==version followed by --hash=sha256:<64 hex> (pip --require-hashes)`);
+  }
+  if (count === 0) issues.push("it lists no requirement");
+  if (count > ENV_LIMITS.requirements) issues.push(`it lists more than ${ENV_LIMITS.requirements} requirements`);
+  return issues;
+}
+
 /** Validates fixtures/expect.json. */
 export function validateExpect(expect, payloadText) {
   const issues = [];
@@ -586,7 +950,12 @@ export function validatePackDir(dir) {
       issues.push(at(`style.json is not JSON: ${err.message}`));
     }
   }
-  if (style) for (const m of validateStyle(style, { dirName })) issues.push(at(m));
+  const envTexts = {};
+  for (const rel of names) if (rel.startsWith("env/")) envTexts[rel] = read(rel);
+  if (style) for (const m of validateStyle(style, { dirName, files: envTexts })) issues.push(at(m));
+  const envFiles = names.filter((n) => n.startsWith("env/"));
+  if (envFiles.length > 0 && style?.environment === undefined) issues.push(at("env/ holds the lockfiles of an environment; this pack has none"));
+  for (const rel of envFiles) if (!ENV_FILE_RE.test(rel)) issues.push(at(`${rel}: env/ holds only package.json, package-lock.json, requirements*.txt, LICENSE, NOTICE and README.md (one level of subdirectory)`));
 
   const readme = read("README.md");
   if (readme === null) issues.push(at("README.md is missing"));
@@ -634,6 +1003,11 @@ export function validatePackDir(dir) {
       if (!renderFiles.some((r) => r.startsWith(`render/vendor/${v}/`) && /(^|\/)LICEN[CS]E[^/]*$/.test(r))) {
         issues.push(at(`render/vendor/${v}/ has no LICENSE file: a vendored library carries its licence`));
       }
+    }
+  } else if (engine === "command") {
+    if (renderFiles.length === 0) issues.push(at("render/ is missing: a command pack carries the files its render argv runs (scripts, scenes) in render/"));
+    for (const rel of renderFiles) {
+      if (!COMMAND_RENDER_FILE_RE.test(rel)) issues.push(at(`${rel}: a command render project holds text files only (scripts, scenes, .json, .svg, LICENSE, NOTICE); binaries come from the environment's downloads`));
     }
   } else if (PROJECT_ENGINES.includes(engine)) {
     const index = read("render/index.tsx");

@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "id": "map-route",
+  "name": "/map-route",
+  "version": "1.0.0",
+  "status": "candidate",
+  "aliases": [],
+  "description": "Makes a 3D map animation for a reel. A clean white city with parks and a river, a coloured route that draws itself from start to destination while the camera follows, a red pin that drops with a bounce, an ETA card that counts down and a destination card. Use when the user runs /map-route or asks for an animated route, a \"from A to B\" map, a journey or a commute animation.",
+  "source": {
+    "repo": "https://github.com/artemnovitckii/claude-animation-skills",
+    "commit": "86f70106c9aeae1334184467da5776c533ada3bc",
+    "path": "skills/map-route",
+    "licence": "MIT",
+    "copyright": "Copyright (c) 2026 Artem Novitckii"
+  },
+  "kit": "claude-animation-skills",
+  "entry": "SKILL.md",
+  "requires": [
+    "ffmpeg",
+    "node"
+  ],
+  "packs": [
+    "hermes-map-route"
+  ],
+  "curation": [],
+  "notes": "Imported unchanged from upstream; not curated yet (skills/README.md). A quick skill.",
+  "files": {
+    "SKILL.md": "4d87472c022889d1a39384ef5629bbb5fa21f35ff0776bd5435eb5980bd0a335",
+    "build.py": "2de4db4c146cae9a16767ba64cf7498e9fc38339ff88f169a0223469d2c1301a",
+    "template.html": "a86f7faa7eeb82e201fb242c89c32822e72b28a8a59de548d20cda70db34bdc7"
+  }
+}

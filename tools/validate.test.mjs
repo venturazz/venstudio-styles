@@ -33,6 +33,7 @@ test("every pack in this repo is valid", () => {
   assert.deepEqual(packs.map((p) => p.id), [
     "ambient-loop",
     "animated-line-graph",
+    "dafiology-fullframe",
     "documentary-stills",
     "explainer-flat-vector",
     "hermes-breakdown",
@@ -52,6 +53,7 @@ test("every pack in this repo is valid", () => {
     "mystery-narration",
     "probe-line-graph",
     "story-read-aloud",
+    "three-low-poly",
     "travel-documentary",
   ]);
 });
@@ -319,6 +321,8 @@ test("workflow: every pack names its recipe; stills and the explainer are image-
     "mystery-narration": "image-sequence",
     "story-read-aloud": "image-sequence",
     "travel-documentary": "image-sequence",
+    "three-low-poly": "image-sequence",
+    "dafiology-fullframe": "image-sequence",
     "animated-line-graph": "scene-spec",
     "minimal-line-art": "scene-spec",
     "probe-line-graph": "scene-spec",

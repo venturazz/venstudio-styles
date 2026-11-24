@@ -12,9 +12,9 @@ Hermes and Kiro work here through pull requests. The owner merges. Nothing reach
    (FORMAT.md, Workflows: `image-sequence` for a picture per shot, `scene-spec` for a page drawn from data,
    `hermes-skill` for a Hermes skill, `html-design` for a page Hermes writes per video, research only). A reserved
    recipe (`engine-project`, `clip-sequence`) is not built and is refused.
-3. **CI → lab.** This repo's CI validates the pack and renders what it can (the Remotion compositions, and every
-   html-capture fixture, checked for size, fps, duration and frame count; stills packs are parameters only; hermes
-   packs are never rendered here). Once the fixture renders in venstudio's CI too (after a sync, below), a PR sets
+3. **CI → lab.** This repo's CI validates the pack and renders what it can (the Remotion compositions, every
+   html-capture fixture and every command fixture after installing its environment, checked for size, fps, duration
+   and frame count; stills packs are parameters only; hermes packs are never rendered here). Once the fixture renders in venstudio's CI too (after a sync, below), a PR sets
    `status: "lab"` and adds the `ci-render` entry to `curation`.
 4. **Trial.** A PR sets `status: "trial"`. After venstudio vendors it, the pack appears on New Video under "Trial
    styles (research only, not for publishing)". Every trial run is recorded by the portal: QC result, the owner's
@@ -44,6 +44,41 @@ research only in the same way: engine `html-capture`, at most `trial`, every run
 `ci-render` entry only for a real CI run; never invent one.
 
 `retired` takes a pack out of New Video; it stays in the repo so old runs remain explainable.
+
+## Handover from Hermes: a style with its own tools
+
+When a style works in Hermes with Hermes's own tools (three.js, Godot, Manim, Blender, Python libraries, ...) and the
+owner liked a trial of it, Hermes hands it over so Muse workers render it themselves: a PR adds the pack as engine
+`command` with an `environment` (FORMAT.md "Environments") that records exactly what Hermes used, pinned by version
+and sha256. Nothing is pre-built by guess: a tool reaches workers only this way.
+
+1. **Hermes opens the PR** (docs/hermes-handover.md is written for Hermes, with a checklist in
+   docs/hermes-handover-checklist.md): the contract, the render project in `render/`, the environment recipe captured
+   from what it actually ran, `env/` lockfiles, the fixture, `expect.json`, provenance and every tool's licence. At
+   `status: "draft"` (or `lab` once a real CI run passed; never invented).
+2. **CI proves the recipe without Hermes** (job `environments`): on a clean runner, as a non-root user, the vendored
+   worker installs exactly the recipe with its own installer, runs the probe, renders the fixture with its command
+   renderer, and `tools/check-video.mjs` checks it. A recipe that fails cannot pass; the log says why.
+3. **The owner merges.** That is the one control point. venstudio then vendors the commit (`scripts/sync-styles.mjs`),
+   its own CI renders the pack again through the real worker, and the owner merges that too.
+4. **Workers update themselves**: the portal serves the pack's files in `env-packs.json` through the signed update
+   manifest (Phase 0); each worker 0.12.0+ installs the environment between jobs, runs the probe, and only then reports
+   `env:<id>@<version>` and `pack:<id>@<version>`. A failed install shows on the Workers page with its reason and is
+   tried again with backoff; it never blocks other jobs.
+5. The pack goes through the same lifecycle as any other: `lab` with the `ci-render` entry of a real CI run, then
+   `trial`, then the owner decides on `proven` and `listed`.
+
+What review checks in such a PR: every download is https from a listed host with its sha256 and size; npm installs
+from the lockfile in the pack with `--ignore-scripts` (an `allowScripts` entry needs a reason in the PR); pip has
+`--require-hashes` lines only; the probe and render are fixed argv arrays; nothing needs root; no credentials, tokens,
+private URLs or private data anywhere in the pack; each tool's licence is recorded.
+
+## Skills
+
+The skills a hermes pack is made with live in `skills/` (`skills/README.md`). A skill is `candidate` until the owner
+or Hermes curates it: a PR moves it to `skills/curated/` with a curation entry (`by`, `result: "approved"`, `version`,
+`date`, `notes`). Every hermes pack's `hermes.skill` must be a skill here; `node tools/skills.mjs` checks it. A change to
+a skill's files bumps its `version` and needs a new approval if it is curated.
 
 ## Who may change status
 
@@ -86,6 +121,10 @@ key; workers install them without a worker version bump.
 node tools/validate.mjs
 node --test "tools/*.test.mjs"
 node tools/assemble-remotion.mjs /tmp/remotion   # Remotion packs: then npm install and npx tsc there
+# packs with an environment (as a non-root user; needs node, npm and ffmpeg):
+node runtime/html-capture/venstudio-worker.ts env-install --pack packs/<id> --envs /tmp/envs --cache /tmp/env-cache
+node runtime/html-capture/venstudio-worker.ts render-command --pack packs/<id> --envs /tmp/envs --out /tmp/<id>.mp4 --font <a .ttf>
+node tools/check-video.mjs /tmp/<id>.mp4 packs/<id>/fixtures/expect.json
 # html-capture packs, once that project has its browser (npx remotion browser ensure):
 node runtime/html-capture/venstudio-worker.ts capture-html --pack packs/<id> --out /tmp/<id>.mp4 --remotion /tmp/remotion --font <a .ttf>
 node tools/check-video.mjs /tmp/<id>.mp4 packs/<id>/fixtures/expect.json

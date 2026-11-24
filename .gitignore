@@ -1,7 +1,12 @@
 node_modules/
 package-lock.json
+# A pack's environment ships its npm lockfile (FORMAT.md "Environments").
+!packs/*/env/package-lock.json
+!packs/*/env/*/package-lock.json
 .remotion-project/
 .venstudio-probe.json
 out/
 *.log
 .DS_Store
+# A skill kit keeps its upstream npm lockfile (skills/README.md).
+!skills/kits/*/files/package-lock.json

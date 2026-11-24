@@ -22,7 +22,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { createReadStream, createWriteStream, existsSync } from "node:fs";
-import { chmod, copyFile, lstat, mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, statfs, writeFile } from "node:fs/promises";
+import { chmod, copyFile, cp, lstat, mkdir, mkdtemp, open, readdir, readFile, readlink, realpath, rename, rm, stat, statfs, symlink, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
@@ -32,6 +32,7 @@ import { Readable, Transform, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
+import zlib from "node:zlib";
 import type {
   Capability,
   ClaimedJob,
@@ -47,7 +48,7 @@ import type {
 } from "../../packages/protocol/src/index.ts";
 import type { TemplateProps } from "../render-remotion/src/props.ts";
 
-export const VERSION = "0.11.0";
+export const VERSION = "0.12.0";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -298,6 +299,9 @@ export async function detectCapabilities(home?: string): Promise<Capability[]> {
     // preview-frames (0.11.0): still frames of a page. Reported only after a still of the probe page came back here,
     // so the portal queues a preview only for a worker whose code and browser have both shown they take one.
     if (caps.includes("html-capture") && !(await previewFramesUnavailableReason(remotionDir(home)))) caps.push("preview-frames");
+    // command (0.12.0): the renderer that runs a pack's own render argv with its environment; ffmpeg encodes and
+    // finishes its output. What a command pack renders with is reported apart, as env:<id>@<version>.
+    caps.push("command");
   }
   const kokoro = process.env.KOKORO_URL;
   if (kokoro) {
@@ -313,7 +317,12 @@ export async function detectCapabilities(home?: string): Promise<Capability[]> {
   const index = await readInstalledPacks(home ?? defaultHome());
   const probed = caps.includes("remotion-2d") ? (await remotionProbe(remotionDir(home))).packs : [];
   const html = caps.includes("html-capture") ? (await installedHtmlPacks(remotionDir(home))).packs : [];
-  for (const c of packCapabilitiesFor(index, caps, probed, VERSION, html)) if (!caps.includes(c as Capability)) caps.push(c as Capability);
+  // Environments (0.12.0+): env:<id>@<version> for each one whose install finished and whose probe passes here.
+  const envPacks = (await installedEnvPacks(home ?? defaultHome())).packs;
+  const ready = await readyEnvironments(home ?? defaultHome(), envPacks, await readEnvState(home ?? defaultHome()));
+  for (const k of ready) caps.push(`env:${k}` as Capability);
+  const envReady = envPacks.filter((p) => ready.has(envKey(p.recipe))).map((p) => `${p.id}@${p.version}`);
+  for (const c of packCapabilitiesFor(index, caps, probed, VERSION, html, envReady)) if (!caps.includes(c as Capability)) caps.push(c as Capability);
   return caps;
 }
 
@@ -1301,6 +1310,7 @@ export const RENDER_ENGINES: Readonly<Record<string, Capability>> = {
   "ffmpeg-stills": "ffmpeg",
   "remotion-2d": "remotion-2d",
   "html-capture": "html-capture",
+  command: "command",
 };
 
 export const DEFAULT_RENDER_ENGINE = "ffmpeg-stills";
@@ -1342,7 +1352,9 @@ export function engineUnavailable(engine: string, caps: readonly string[], detai
       ? "Install the Remotion renderer on the worker (install.sh --with-remotion, see docs/remotion-worker.md), then press Retry."
       : engine === "html-capture"
         ? "html-capture uses the headless Chromium of the Remotion renderer: install it on the worker (install.sh --with-remotion, see docs/html-capture.md), then press Retry."
-        : "Install it on the worker, then press Retry.")
+        : engine === "command"
+          ? "engine command needs ffmpeg and worker 0.12.0 or later; the pack's environment installs itself after the next signed update (docs/style-packs.md \"Environments\")."
+          : "Install it on the worker, then press Retry.")
   );
 }
 
@@ -2730,11 +2742,1671 @@ export function htmlPageModeFor(spec: Pick<RenderSpec, "page">, pack: InstalledH
   return pack;
 }
 
+// ---------------------------------------------------------------------------
+// Environments and engine command (0.12.0). See docs/style-packs.md "Environments" and venstudio-styles FORMAT.md.
+//
+// A pack may carry an `environment`: a declarative recipe of the exact tools it renders with (downloads pinned by
+// sha256, an npm install from a lockfile in the pack, a pip install with --require-hashes, PATH-like variables), a
+// probe and, for engine command, a render argv. There is no shell anywhere: every command this worker runs for a
+// recipe is built here from fixed parts, and the pack only fills placeholders from a closed set. The recipe reaches
+// this worker inside a signed bundle (env-packs.json, listed in the update manifest), after the owner merged it in
+// venstudio-styles and its CI installed and rendered it without Hermes.
+//
+// Installs run between jobs, in the background, into <home>/envs/<id>@<version>/, never as root. The worker reports
+// env:<id>@<version> (and pack:<id>@<version> for the packs that use it) only after the probe passed here. A failed
+// install is reported with its reason and tried again with backoff; it never blocks a job.
+
+export const UPDATE_ENV_PACKS_FILE = "env-packs.json";
+export const ENV_PACKS_KIND = "venstudio-env-packs";
+export const ENV_PACKS_FORMAT = 1;
+/** Mirror of the validator's ENV_* lists (venstudio-styles tools/validate.mjs); a test checks they agree. */
+export const ENV_PLATFORMS: readonly string[] = ["linux-x64", "linux-arm64"];
+export const ENV_EXTRACTS: readonly string[] = ["tar.gz", "tar.xz", "zip", "none"];
+export const ENV_REQUIRE_TOOLS: readonly string[] = ["node", "npm", "python3", "ffmpeg", "glibc", "lib"];
+export const ENV_PATH_VARS: readonly string[] = ["PATH", "LD_LIBRARY_PATH", "PYTHONPATH", "NODE_PATH"];
+export const ENV_PLACEHOLDERS: readonly string[] = ["props", "out", "width", "height", "fps", "frames", "packDir", "envDir", "inDir", "workDir"];
+export const ENV_PROBE_PLACEHOLDERS: readonly string[] = ["packDir", "envDir", "workDir"];
+export const ENV_PROGRAMS: readonly string[] = ["node", "python", "ffmpeg"];
+const ENV_FORBIDDEN_PROGRAMS = ["sudo", "su", "doas", "pkexec", "sh", "bash", "dash", "zsh", "env", "chroot", "setpriv", "unshare", "nsenter", "runuser"];
+const ENV_INLINE_FLAGS: Readonly<Record<string, readonly string[]>> = {
+  node: ["-e", "--eval", "-p", "--print", "-r", "--require", "--import", "--loader", "--experimental-loader"],
+  python: ["-c"],
+};
+export const ENV_LIMITS = {
+  steps: 16,
+  hosts: 16,
+  downloadBytes: 512 * 1024 * 1024,
+  totalDownloadBytes: 1024 * 1024 * 1024,
+  extractBytes: 1024 * 1024 * 1024,
+  extractEntries: 100_000,
+  argv: 64,
+  arg: 400,
+  probeTimeoutSec: 300,
+  secondsPerVideoSecond: 600,
+  stripComponents: 8,
+  redirects: 5,
+  downloadMinMs: 10 * 60_000,
+  installMaxMs: 90 * 60_000,
+  logBytes: 64 * 1024,
+  npmTimeoutMs: 20 * 60_000,
+  pipTimeoutMs: 30 * 60_000,
+  renderMaxMs: 4 * 3600_000,
+} as const;
+/** Backoff after a failed install: 5 min, doubling, at most 6 h. */
+export const ENV_RETRY = { firstMs: 5 * 60_000, maxMs: 6 * 3600_000 } as const;
+/** Kept free on the disk after an install (on top of the estimate). VENSTUDIO_ENV_BUDGET_GB caps all environments. */
+export const ENV_DISK_RESERVE_GB = 1;
+export const ENV_DEFAULT_BUDGET_GB = 10;
+const ENV_MANIFEST = ".venstudio-env.json";
+
+export class EnvRecipeError extends Error {}
+export class EnvInstallError extends Error {}
+
+export type EnvStep =
+  | { kind: "download"; url: string; sha256: string; bytes: number; extract: string; stripComponents: number; to: string; executable: boolean; platform: string | null }
+  | { kind: "npm"; lockfile: string; to: string; allowScripts: string[] }
+  | { kind: "pip"; requirements: string; python: string; to: string }
+  | { kind: "env"; vars: Record<string, string[]> };
+
+export interface EnvRecipe {
+  id: string;
+  version: string;
+  platforms: string[];
+  hosts: string[];
+  requires: Array<{ tool: string; min: string | null; name: string | null }>;
+  steps: EnvStep[];
+  probe: { argv: string[]; timeoutSec: number; exitCode: number; stdout: string | null };
+  render: { argv: string[]; secondsPerVideoSecond: number; output: "mp4-muted" | "png-frames"; captions: "worker" | "renderer"; audio: "worker" } | null;
+  licences: Array<{ tool: string; version: string; licence: string; source: string }>;
+}
+
+const ENV_ID_RE = /^[a-z0-9][a-z0-9-]{1,62}$/;
+const ENV_SEMVER_RE = /^\d{1,6}\.\d{1,6}\.\d{1,6}$/;
+const ENV_HOST_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const ENV_MIN_RE = /^\d{1,4}(\.\d{1,4}){0,2}$/;
+const ENV_SONAME_RE = /^lib[A-Za-z0-9_.+-]{1,80}\.so(\.\d{1,4}){0,3}$/;
+const ENV_PATH_RE = /^[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$/;
+
+/** A path inside the pack or the environment: relative, no "." or ".." segments, no backslash, not absolute. Pure. */
+export function safeRelPath(p: unknown, allowDot = false): p is string {
+  if (typeof p !== "string") return false;
+  if (allowDot && p === ".") return true;
+  if (!ENV_PATH_RE.test(p) || p.endsWith("/")) return false;
+  return p.split("/").every((s) => s !== "" && s !== "." && s !== "..");
+}
+
+function argvOf(raw: unknown, at: string, allowed: readonly string[], hasVenv: boolean): string[] {
+  const bad = (m: string): never => {
+    throw new EnvRecipeError(`${at}: ${m}`);
+  };
+  if (!Array.isArray(raw) || raw.length < 1 || raw.length > ENV_LIMITS.argv) return bad("must be an argv array (a fixed command, not a shell string)");
+  const argv = raw.map((a, i) => {
+    if (typeof a !== "string" || !a || a.length > ENV_LIMITS.arg || /[\0\n\r]/.test(a)) return bad(`[${i}] must be a non-empty one-line string`);
+    for (const m of a.matchAll(/\{([^{}]*)\}/g)) if (!allowed.includes(m[1])) bad(`[${i}]: {${m[1]}} is not a placeholder here`);
+    const rest = a.replace(/\{([^{}]*)\}/g, "");
+    if (rest.includes("{") || rest.includes("}")) bad(`[${i}] has a brace that is not a placeholder`);
+    if (ENV_FORBIDDEN_PROGRAMS.includes(a) || (i === 0 && ENV_FORBIDDEN_PROGRAMS.includes(a.split("/").pop() as string))) bad(`[${i}]: ${a} is refused (no shell, no sudo or root)`);
+    return a;
+  });
+  const prog = argv[0];
+  if (prog.startsWith("{envDir}/")) {
+    if (!safeRelPath(prog.slice("{envDir}/".length))) bad("[0] must be {envDir}/<a relative path>");
+  } else if (!ENV_PROGRAMS.includes(prog)) bad(`[0] must be ${ENV_PROGRAMS.join(", ")} or {envDir}/<file>`);
+  if (prog === "python" && !hasVenv) bad("[0] python needs a pip step");
+  for (const a of argv.slice(1)) if ((ENV_INLINE_FLAGS[prog] ?? []).includes(a)) bad(`${prog} ${a} runs inline code`);
+  return argv;
+}
+
+/**
+ * Reads style.json `environment` into a recipe, refusing anything the styles validator refuses (and a little more is
+ * never accepted: unknown fields are errors). Throws EnvRecipeError naming the first problem. Pure.
+ */
+export function parseEnvironment(raw: unknown): EnvRecipe {
+  const bad = (m: string): never => {
+    throw new EnvRecipeError(`environment: ${m}`);
+  };
+  if (!isRecord(raw)) return bad("not an object");
+  const known = ["id", "version", "platforms", "hosts", "requires", "steps", "probe", "render", "licences"];
+  for (const k of Object.keys(raw)) if (!known.includes(k)) bad(`unknown field "${k}"`);
+  const id = typeof raw.id === "string" && ENV_ID_RE.test(raw.id) ? raw.id : bad("no valid id");
+  const version = typeof raw.version === "string" && ENV_SEMVER_RE.test(raw.version) ? raw.version : bad("no valid version");
+  const platforms = Array.isArray(raw.platforms) && raw.platforms.length > 0 && raw.platforms.every((p) => ENV_PLATFORMS.includes(p as string)) ? (raw.platforms as string[]) : bad("no valid platforms");
+  const hosts = Array.isArray(raw.hosts) && raw.hosts.length <= ENV_LIMITS.hosts && raw.hosts.every((h) => typeof h === "string" && ENV_HOST_RE.test(h)) ? (raw.hosts as string[]) : bad("hosts must be exact host names");
+  const requires = (Array.isArray(raw.requires) && raw.requires.length <= 16 ? raw.requires : bad("no valid requires")).map((r, i) => {
+    if (!isRecord(r) || !ENV_REQUIRE_TOOLS.includes(r.tool as string)) return bad(`requires[${i}] names no known tool`);
+    const min = r.min === undefined ? null : typeof r.min === "string" && ENV_MIN_RE.test(r.min) ? r.min : bad(`requires[${i}].min is not a version`);
+    const name = r.tool === "lib" ? (typeof r.name === "string" && ENV_SONAME_RE.test(r.name) ? r.name : bad(`requires[${i}].name is not a soname`)) : null;
+    return { tool: r.tool as string, min, name };
+  });
+  if (!Array.isArray(raw.steps) || raw.steps.length < 1 || raw.steps.length > ENV_LIMITS.steps) return bad("no valid steps");
+  let total = 0;
+  let venv = false;
+  const targets = new Set<string>();
+  const target = (to: unknown, at: string, allowDot = false): string => {
+    if (!safeRelPath(to, allowDot)) return bad(`${at}.to must be a relative path inside the environment`);
+    if (targets.has(to)) return bad(`${at}.to ${to} is the target of another step`);
+    targets.add(to);
+    return to;
+  };
+  const steps = raw.steps.map((s, i): EnvStep => {
+    const at = `steps[${i}]`;
+    if (!isRecord(s) || Object.keys(s).length !== 1) return bad(`${at} must be exactly one of download, npm, pip, env`);
+    const [kind] = Object.keys(s);
+    const v = s[kind];
+    if (!isRecord(v)) return bad(`${at}.${kind} must be an object`);
+    if (kind === "download") {
+      let url: URL | null = null;
+      try {
+        url = new URL(String(v.url));
+      } catch {}
+      if (!url || url.protocol !== "https:" || url.username || url.password || url.port) return bad(`${at}.url must be a plain https URL`);
+      if (!hosts.includes(url.hostname)) return bad(`${at}.url host ${url.hostname} is not in hosts`);
+      if (typeof v.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(v.sha256)) return bad(`${at}.sha256 is required`);
+      if (!Number.isInteger(v.bytes) || (v.bytes as number) < 1 || (v.bytes as number) > ENV_LIMITS.downloadBytes) return bad(`${at}.bytes must be the exact size`);
+      total += v.bytes as number;
+      if (!ENV_EXTRACTS.includes(v.extract as string)) return bad(`${at}.extract is not one of ${ENV_EXTRACTS.join(", ")}`);
+      const strip = v.stripComponents ?? 0;
+      if (!Number.isInteger(strip) || (strip as number) < 0 || (strip as number) > ENV_LIMITS.stripComponents || (v.extract === "none" && strip !== 0)) return bad(`${at}.stripComponents is invalid`);
+      if (v.executable !== undefined && (typeof v.executable !== "boolean" || v.extract !== "none")) return bad(`${at}.executable is only for extract none`);
+      const platform = v.platform === undefined ? null : platforms.includes(v.platform as string) ? (v.platform as string) : bad(`${at}.platform is not one of platforms`);
+      return { kind: "download", url: url.href, sha256: v.sha256, bytes: v.bytes as number, extract: v.extract as string, stripComponents: strip as number, to: target(v.to, at, v.extract !== "none"), executable: v.executable === true, platform };
+    }
+    if (kind === "npm") {
+      if (!safeRelPath(v.lockfile) || !/^env\/(.+\/)?package-lock\.json$/.test(v.lockfile)) return bad(`${at}.lockfile must be env/[<dir>/]package-lock.json`);
+      const allow = v.allowScripts ?? [];
+      if (!Array.isArray(allow) || allow.length > 8 || !allow.every((n) => typeof n === "string" && /^(@[a-z0-9][a-z0-9._-]{0,100}\/)?[a-z0-9][a-z0-9._-]{0,213}$/.test(n))) return bad(`${at}.allowScripts is invalid`);
+      return { kind: "npm", lockfile: v.lockfile, to: target(v.to, at), allowScripts: allow as string[] };
+    }
+    if (kind === "pip") {
+      if (venv) return bad(`${at}: one pip step per environment`);
+      venv = true;
+      if (!safeRelPath(v.requirements) || !/^env\/(.+\/)?requirements[A-Za-z0-9_.-]*\.txt$/.test(v.requirements)) return bad(`${at}.requirements must be env/[<dir>/]requirements*.txt`);
+      if (typeof v.python !== "string" || !ENV_MIN_RE.test(v.python)) return bad(`${at}.python must be a version`);
+      return { kind: "pip", requirements: v.requirements, python: v.python, to: target(v.to, at) };
+    }
+    if (kind === "env") {
+      const vars: Record<string, string[]> = {};
+      for (const [n, val] of Object.entries(v)) {
+        if (!ENV_PATH_VARS.includes(n)) return bad(`${at}: ${n} is not one of ${ENV_PATH_VARS.join(", ")}`);
+        const list = Array.isArray(val) ? val : [val];
+        if (list.length < 1 || list.length > 8 || !list.every((x) => safeRelPath(x, true))) return bad(`${at}.${n} must be relative directories inside the environment`);
+        vars[n] = list as string[];
+      }
+      if (Object.keys(vars).length === 0) return bad(`${at} sets nothing`);
+      return { kind: "env", vars };
+    }
+    return bad(`${at}: "${kind}" is not a step (download, npm, pip, env; there is no shell step)`);
+  });
+  if (total > ENV_LIMITS.totalDownloadBytes) bad("the downloads are larger than the limit");
+  const p = isRecord(raw.probe) ? raw.probe : bad("no probe");
+  const probeArgv = argvOf(p.argv, "environment.probe.argv", ENV_PROBE_PLACEHOLDERS, venv);
+  if (!Number.isInteger(p.timeoutSec) || (p.timeoutSec as number) < 1 || (p.timeoutSec as number) > ENV_LIMITS.probeTimeoutSec) bad("probe.timeoutSec is invalid");
+  if (!Number.isInteger(p.exitCode) || (p.exitCode as number) < 0 || (p.exitCode as number) > 255) bad("probe.exitCode is invalid");
+  let stdout: string | null = null;
+  if (p.stdout !== undefined) {
+    if (typeof p.stdout !== "string" || p.stdout.length > 200) bad("probe.stdout is invalid");
+    try {
+      new RegExp(p.stdout as string);
+    } catch {
+      bad("probe.stdout is not a regular expression");
+    }
+    stdout = p.stdout as string;
+  }
+  let render: EnvRecipe["render"] = null;
+  if (raw.render !== undefined) {
+    const r = isRecord(raw.render) ? raw.render : bad("render is not an object");
+    const argv = argvOf(r.argv, "environment.render.argv", ENV_PLACEHOLDERS, venv);
+    if (!argv.some((a) => a.includes("{out}"))) bad("render.argv must pass {out}");
+    const sps = r.secondsPerVideoSecond;
+    if (typeof sps !== "number" || !Number.isFinite(sps) || sps < 1 || sps > ENV_LIMITS.secondsPerVideoSecond) bad("render.secondsPerVideoSecond is invalid");
+    if (r.output !== "mp4-muted" && r.output !== "png-frames") bad("render.output must be mp4-muted or png-frames");
+    if (r.captions !== "worker" && r.captions !== "renderer") bad("render.captions must be worker or renderer");
+    if (r.audio !== "worker") bad('render.audio must be "worker"');
+    render = { argv, secondsPerVideoSecond: sps as number, output: r.output as "mp4-muted" | "png-frames", captions: r.captions as "worker" | "renderer", audio: "worker" };
+  }
+  const licences = (Array.isArray(raw.licences) && raw.licences.length >= 1 && raw.licences.length <= 32 ? raw.licences : bad("licences must list every tool")).map((l, i) => {
+    if (!isRecord(l) || typeof l.tool !== "string" || typeof l.version !== "string" || typeof l.licence !== "string" || typeof l.source !== "string" || !l.source.startsWith("https://")) {
+      return bad(`licences[${i}] needs tool, version, licence and an https source`);
+    }
+    return { tool: l.tool.slice(0, 80), version: l.version.slice(0, 40), licence: l.licence.slice(0, 200), source: l.source.slice(0, 400) };
+  });
+  return {
+    id,
+    version,
+    platforms,
+    hosts,
+    requires,
+    steps,
+    probe: { argv: probeArgv, timeoutSec: p.timeoutSec as number, exitCode: p.exitCode as number, stdout },
+    render,
+    licences,
+  };
+}
+
+/** env:<id>@<version>, the capability of a ready environment. */
+export const envCapability = (r: Pick<EnvRecipe, "id" | "version">) => `env:${r.id}@${r.version}`;
+export const envKey = (r: Pick<EnvRecipe, "id" | "version">) => `${r.id}@${r.version}`;
+
+/** This machine's platform in recipe terms, or null when no recipe can run here. */
+export function envPlatform(platform: string = process.platform, arch: string = process.arch): string | null {
+  if (platform !== "linux") return null;
+  return arch === "x64" ? "linux-x64" : arch === "arm64" ? "linux-arm64" : null;
+}
+
+/**
+ * Replaces placeholders in an argv. Only names in `allowed` are substituted; anything else was refused when the recipe
+ * was parsed, and is refused again here. A value is inserted as is, never split or interpreted: there is no shell.
+ */
+export function substituteArgv(argv: readonly string[], values: Readonly<Record<string, string>>, allowed: readonly string[] = ENV_PLACEHOLDERS): string[] {
+  return argv.map((a) =>
+    a.replace(/\{([^{}]*)\}/g, (_m, name: string) => {
+      if (!allowed.includes(name) || !Object.hasOwn(values, name)) throw new EnvRecipeError(`{${name}} has no value here`);
+      return values[name];
+    }),
+  );
+}
+
+/** The executable for argv[0]: the worker's node, the venv's python, the worker's ffmpeg, or a file in the environment. */
+export function resolveProgram(argv0: string, o: { envDir: string; venv: string | null; node?: string; ffmpeg?: string }): string {
+  if (argv0 === "node") return o.node ?? process.execPath;
+  if (argv0 === "ffmpeg") return o.ffmpeg ?? ffmpegPath();
+  if (argv0 === "python") {
+    if (!o.venv) throw new EnvRecipeError("python needs a pip step");
+    return path.join(o.envDir, o.venv, "bin", "python");
+  }
+  const rel = argv0.startsWith("{envDir}/") ? argv0.slice("{envDir}/".length) : null;
+  if (!rel || !safeRelPath(rel)) throw new EnvRecipeError(`argv[0] ${argv0} is not a program a recipe may run`);
+  return path.join(o.envDir, rel);
+}
+
+/** The PATH-like variables of a recipe, as absolute directories inside the environment (in order). Pure. */
+export function recipePathVars(recipe: Pick<EnvRecipe, "steps">, envDir: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const s of recipe.steps) {
+    if (s.kind === "pip") (out.PATH ??= []).push(path.join(envDir, s.to, "bin"));
+    if (s.kind === "env") for (const [n, list] of Object.entries(s.vars)) (out[n] ??= []).push(...list.map((d) => path.join(envDir, d)));
+  }
+  return out;
+}
+
+/**
+ * The minimal environment a probe or a render runs with: no token, no portal URL, nothing of the worker's own
+ * environment but the locale. PATH holds the recipe's directories, then node's and ffmpeg's, then /usr/bin:/bin.
+ * `proxy` (when set) is a loopback address that refuses and records every request a tool sends through a proxy.
+ */
+export function commandEnv(o: { recipe: Pick<EnvRecipe, "steps">; envDir: string; home: string; tmp: string; proxy?: string | null; network?: boolean; base?: NodeJS.ProcessEnv }): Record<string, string> {
+  const base = o.base ?? process.env;
+  const vars = recipePathVars(o.recipe, o.envDir);
+  const sys = [path.dirname(process.execPath), path.dirname(ffmpegPath()) === "." ? "" : path.dirname(ffmpegPath()), "/usr/local/bin", "/usr/bin", "/bin"].filter(Boolean);
+  const env: Record<string, string> = {
+    PATH: [...(vars.PATH ?? []), ...sys].join(":"),
+    HOME: o.home,
+    TMPDIR: o.tmp,
+    LANG: "C.UTF-8",
+    LC_ALL: "C.UTF-8",
+    TZ: "UTC",
+  };
+  for (const n of ["LD_LIBRARY_PATH", "PYTHONPATH", "NODE_PATH"]) if (vars[n]) env[n] = vars[n].join(":");
+  if (base.FFMPEG_PATH) env.FFMPEG_PATH = base.FFMPEG_PATH;
+  if (o.network) {
+    // Install time only: the machine's egress proxy (Muse), so npm, pip and the downloads can leave.
+    for (const k of ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "NODE_USE_ENV_PROXY"]) if (base[k]) env[k] = base[k] as string;
+  } else if (o.proxy) {
+    for (const k of ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"]) env[k] = o.proxy;
+    env.NO_PROXY = "";
+    env.no_proxy = "";
+    env.NODE_USE_ENV_PROXY = "1";
+  }
+  return env;
+}
+
+// --- Archives. Read whole in memory (the caps keep that bounded), checked entry by entry, then written by this code.
+
+export interface ArchiveEntry {
+  path: string;
+  type: "file" | "dir" | "symlink";
+  mode: number;
+  data?: Buffer;
+  target?: string;
+}
+
+/** Parses a tar stream (ustar, GNU long names, pax paths). Refuses hard links, devices and fifos by name. Pure. */
+export function parseTar(buf: Buffer): ArchiveEntry[] {
+  const out: ArchiveEntry[] = [];
+  let off = 0;
+  let longName: string | null = null;
+  let longLink: string | null = null;
+  let pax: Record<string, string> = {};
+  const str = (b: Buffer) => {
+    const i = b.indexOf(0);
+    return b.subarray(0, i < 0 ? b.length : i).toString("utf8");
+  };
+  const octal = (b: Buffer) => {
+    if (b[0] & 0x80) throw new EnvInstallError("tar: base-256 sizes are not supported");
+    const s = str(b).trim();
+    return s ? parseInt(s, 8) : 0;
+  };
+  while (off + 512 <= buf.length) {
+    const h = buf.subarray(off, off + 512);
+    if (h.every((x) => x === 0)) break;
+    let sum = 0;
+    for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 32 : h[i];
+    if (sum !== octal(h.subarray(148, 156))) throw new EnvInstallError("tar: bad header checksum (not a tar archive, or corrupt)");
+    const size = octal(h.subarray(124, 136));
+    const type = String.fromCharCode(h[156] || 48);
+    const data = buf.subarray(off + 512, off + 512 + size);
+    if (data.length !== size) throw new EnvInstallError("tar: truncated archive");
+    off += 512 + Math.ceil(size / 512) * 512;
+    if (type === "L") {
+      longName = str(data);
+      continue;
+    }
+    if (type === "K") {
+      longLink = str(data);
+      continue;
+    }
+    if (type === "x") {
+      pax = {};
+      const text = data.toString("utf8");
+      let i = 0;
+      while (i < text.length) {
+        const sp = text.indexOf(" ", i);
+        const len = parseInt(text.slice(i, sp), 10);
+        if (!(len > 0)) break;
+        const rec = text.slice(sp + 1, i + len - 1);
+        const eq = rec.indexOf("=");
+        pax[rec.slice(0, eq)] = rec.slice(eq + 1);
+        i += len;
+      }
+      continue;
+    }
+    if (type === "g") continue;
+    const prefix = str(h.subarray(345, 500));
+    const name = pax.path ?? longName ?? (prefix ? `${prefix}/${str(h.subarray(0, 100))}` : str(h.subarray(0, 100)));
+    const link = pax.linkpath ?? longLink ?? str(h.subarray(157, 257));
+    longName = null;
+    longLink = null;
+    pax = {};
+    const mode = octal(h.subarray(100, 108));
+    if (type === "0" || type === "7") out.push({ path: name, type: "file", mode, data });
+    else if (type === "5") out.push({ path: name, type: "dir", mode });
+    else if (type === "2") out.push({ path: name, type: "symlink", mode, target: link });
+    else if (type === "1") throw new EnvInstallError(`tar: ${name} is a hard link; refused`);
+    else throw new EnvInstallError(`tar: ${name} is a device, fifo or other special file (type ${type}); refused`);
+  }
+  return out;
+}
+
+/** Parses a zip archive from its central directory (stored or deflated entries; unix symlinks). Pure. */
+export function parseZip(buf: Buffer): ArchiveEntry[] {
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw new EnvInstallError("zip: no end of central directory (not a zip archive)");
+  const count = buf.readUInt16LE(eocd + 10);
+  let p = buf.readUInt32LE(eocd + 16);
+  if (count === 0xffff || p === 0xffffffff) throw new EnvInstallError("zip: zip64 archives are not supported");
+  const out: ArchiveEntry[] = [];
+  let total = 0;
+  for (let n = 0; n < count; n++) {
+    if (buf.readUInt32LE(p) !== 0x02014b50) throw new EnvInstallError("zip: corrupt central directory");
+    const method = buf.readUInt16LE(p + 10);
+    const csize = buf.readUInt32LE(p + 20);
+    const usize = buf.readUInt32LE(p + 24);
+    const nlen = buf.readUInt16LE(p + 28);
+    const xlen = buf.readUInt16LE(p + 30);
+    const clen = buf.readUInt16LE(p + 32);
+    const ext = buf.readUInt32LE(p + 38);
+    const local = buf.readUInt32LE(p + 42);
+    const name = buf.subarray(p + 46, p + 46 + nlen).toString("utf8");
+    p += 46 + nlen + xlen + clen;
+    if (buf.readUInt32LE(local) !== 0x04034b50) throw new EnvInstallError(`zip: ${name} has no local header`);
+    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+    const raw = buf.subarray(start, start + csize);
+    const unixMode = (ext >>> 16) & 0xffff;
+    const isDir = name.endsWith("/");
+    total += usize;
+    if (total > ENV_LIMITS.extractBytes) throw new EnvInstallError(`zip: unpacks to more than ${ENV_LIMITS.extractBytes} bytes`);
+    const data = isDir ? Buffer.alloc(0) : method === 0 ? Buffer.from(raw) : method === 8 ? zlib.inflateRawSync(raw, { maxOutputLength: Math.max(1, usize) }) : null;
+    if (!data) throw new EnvInstallError(`zip: ${name} uses compression method ${method}; only stored and deflate are supported`);
+    if (!isDir && data.length !== usize) throw new EnvInstallError(`zip: ${name} has the wrong size`);
+    const kind = (unixMode & 0o170000) >>> 12;
+    if (isDir) out.push({ path: name.slice(0, -1), type: "dir", mode: unixMode & 0o777 || 0o755 });
+    else if (kind === 0o12) out.push({ path: name, type: "symlink", mode: 0o777, target: data.toString("utf8") });
+    else if (kind === 0 || kind === 0o10) out.push({ path: name, type: "file", mode: unixMode & 0o777 || 0o644, data });
+    else throw new EnvInstallError(`zip: ${name} is a special file; refused`);
+  }
+  return out;
+}
+
+/**
+ * Checks archive entries before anything is written: after stripping `strip` leading components every path must be
+ * relative and stay inside the target (no absolute path, no "..", no NUL), no two entries may write the same path, no
+ * entry may go through a symlink of the archive, and a symlink's target, resolved from where it sits, must stay
+ * inside the environment directory. Modes lose setuid, setgid, sticky and group/other write. Returns the entries to
+ * write, relative to the environment. Pure.
+ */
+export function planExtraction(entries: readonly ArchiveEntry[], o: { strip: number; to: string }): ArchiveEntry[] {
+  const out: ArchiveEntry[] = [];
+  const seen = new Set<string>();
+  const links: string[] = [];
+  let bytes = 0;
+  if (entries.length > ENV_LIMITS.extractEntries) throw new EnvInstallError(`the archive has more than ${ENV_LIMITS.extractEntries} entries`);
+  for (const e of entries) {
+    if (e.path.includes("\0") || e.path.includes("\\")) throw new EnvInstallError(`archive entry ${JSON.stringify(e.path)} has an unsafe name`);
+    if (e.path.startsWith("/") || /^[A-Za-z]:/.test(e.path)) throw new EnvInstallError(`archive entry ${e.path} is an absolute path; refused`);
+    const parts = e.path.split("/").filter((s) => s !== "" && s !== ".");
+    if (parts.includes("..")) throw new EnvInstallError(`archive entry ${e.path} leaves its directory (..); refused`);
+    const kept = parts.slice(o.strip);
+    if (kept.length === 0) continue;
+    const rel = path.posix.normalize(o.to === "." ? kept.join("/") : `${o.to}/${kept.join("/")}`);
+    if (rel.startsWith("../") || rel === ".." || path.posix.isAbsolute(rel)) throw new EnvInstallError(`archive entry ${e.path} leaves the environment; refused`);
+    if (seen.has(rel) && e.type !== "dir") throw new EnvInstallError(`archive entry ${e.path} is written twice; refused`);
+    for (const l of links) if (rel.startsWith(`${l}/`)) throw new EnvInstallError(`archive entry ${e.path} goes through the symlink ${l}; refused`);
+    seen.add(rel);
+    if (e.type === "symlink") {
+      const t = e.target ?? "";
+      if (!t || t.includes("\0") || path.posix.isAbsolute(t)) throw new EnvInstallError(`symlink ${e.path} -> ${t} points outside the environment; refused`);
+      const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(rel), t));
+      if (resolved === ".." || resolved.startsWith("../")) throw new EnvInstallError(`symlink ${e.path} -> ${t} points outside the environment; refused`);
+      links.push(rel);
+      for (const s of seen) if (s.startsWith(`${rel}/`)) throw new EnvInstallError(`archive entry ${s} goes through the symlink ${rel}; refused`);
+      out.push({ path: rel, type: "symlink", mode: 0o777, target: t });
+      continue;
+    }
+    if (e.type === "file") {
+      bytes += e.data?.length ?? 0;
+      if (bytes > ENV_LIMITS.extractBytes) throw new EnvInstallError(`the archive unpacks to more than ${ENV_LIMITS.extractBytes} bytes`);
+    }
+    out.push({ ...e, path: rel, mode: (e.mode & 0o755) | (e.type === "dir" ? 0o700 : 0o600) });
+  }
+  return out;
+}
+
+/**
+ * Refuses to write `rel` under `root` when any existing component on the way (the target itself included) is a
+ * symlink: mkdir, writeFile and copyFile all follow symlinks in parent folders, so one left by an earlier step or an
+ * earlier entry could otherwise send a write outside the environment. Components that do not exist yet are created by
+ * this code, as real folders.
+ */
+export async function assertNoSymlinkOnPath(root: string, rel: string): Promise<void> {
+  const parts = rel.split("/").filter((x) => x && x !== ".");
+  let cur = path.resolve(root);
+  for (const part of parts) {
+    if (part === "..") throw new EnvInstallError(`${rel} leaves the environment`);
+    cur = path.join(cur, part);
+    const st = await lstat(cur).catch(() => null);
+    if (!st) return;
+    if (st.isSymbolicLink()) throw new EnvInstallError(`${rel} would be written through the symlink ${path.relative(root, cur)}; refused`);
+  }
+}
+
+/**
+ * Every symlink under `root` must resolve (through the kernel, following chains) inside `root`, or dangle with a
+ * target that stays inside it textually. Checked after each step and before the probe; a link that escapes fails the
+ * install. `skip` names the folders npm and pip filled (a venv links to the system python by design). Returns the
+ * number of links checked.
+ */
+export async function assertLinksInside(root: string, skip: readonly string[] = []): Promise<number> {
+  const real = await realpath(root);
+  const skipped = new Set(skip.map((d) => path.join(real, d)));
+  let n = 0;
+  const walk = async (d: string, depth: number): Promise<void> => {
+    if (depth > 40) throw new EnvInstallError("the environment is nested too deep");
+    for (const name of await readdir(d)) {
+      const p = path.join(d, name);
+      if (skipped.has(p)) continue;
+      const st = await lstat(p);
+      if (st.isSymbolicLink()) {
+        n++;
+        const target = await readlink(p);
+        const resolved = await realpath(p).catch(() => null);
+        const inside = (x: string) => x === real || x.startsWith(`${real}${path.sep}`);
+        if (resolved !== null ? !inside(resolved) : path.isAbsolute(target) || !inside(path.resolve(await realpath(path.dirname(p)), target))) {
+          throw new EnvInstallError(`symlink ${path.relative(root, p)} -> ${target} resolves outside the environment; refused`);
+        }
+      } else if (st.isDirectory()) await walk(p, depth + 1);
+    }
+  };
+  await walk(real, 0);
+  return n;
+}
+
+/** Writes planned entries under `root`: directories, then files, then symlinks (so nothing is written through one). */
+export async function writeExtraction(root: string, planned: readonly ArchiveEntry[], skipLinkCheck: readonly string[] = []): Promise<number> {
+  const real = path.resolve(root);
+  const inside = async (rel: string) => {
+    const abs = path.resolve(real, rel);
+    if (abs !== real && !abs.startsWith(`${real}${path.sep}`)) throw new EnvInstallError(`${rel} would be written outside the environment`);
+    await assertNoSymlinkOnPath(real, rel);
+    return abs;
+  };
+  for (const e of planned) if (e.type === "dir") await mkdir(await inside(e.path), { recursive: true, mode: 0o755 });
+  let n = 0;
+  for (const e of planned) {
+    if (e.type !== "file") continue;
+    const abs = await inside(e.path);
+    await mkdir(path.dirname(abs), { recursive: true });
+    await writeFile(abs, e.data ?? Buffer.alloc(0), { mode: e.mode });
+    await chmod(abs, e.mode);
+    n++;
+  }
+  for (const e of planned) {
+    if (e.type !== "symlink") continue;
+    const abs = await inside(e.path);
+    await mkdir(path.dirname(abs), { recursive: true });
+    await rm(abs, { force: true });
+    await symlink(e.target as string, abs);
+    n++;
+  }
+  // A chain of links can escape where each target looks harmless on its own (b -> ., c -> b/b/../..): the kernel decides.
+  await assertLinksInside(real, skipLinkCheck);
+  return n;
+}
+
+const gunzipAsync = (b: Buffer, maxOutputLength: number) =>
+  new Promise<Buffer>((resolve, reject) => zlib.gunzip(b, { maxOutputLength }, (err, out) => (err ? reject(new EnvInstallError(`gzip: ${err.message}`)) : resolve(out))));
+
+/**
+ * Decompresses and unpacks one download into the environment. tar.xz needs xz on the machine (it is checked).
+ * Archives are held in memory (at most 512 MB packed, 1 GB unpacked); gzip runs on libuv's thread pool, so a job that
+ * renders meanwhile keeps its event loop.
+ */
+export async function extractDownload(file: string, step: Extract<EnvStep, { kind: "download" }>, envDir: string, signal: AbortSignal, toolDirs: readonly string[] = []): Promise<number> {
+  if (step.extract === "none") {
+    await assertNoSymlinkOnPath(envDir, step.to);
+    const dest = path.join(envDir, step.to);
+    await mkdir(path.dirname(dest), { recursive: true });
+    await copyFile(file, dest);
+    await chmod(dest, step.executable ? 0o755 : 0o644);
+    return 1;
+  }
+  const body = await readFile(file);
+  let entries: ArchiveEntry[];
+  if (step.extract === "zip") entries = parseZip(body);
+  else {
+    const tar = step.extract === "tar.gz" ? await gunzipAsync(body, ENV_LIMITS.extractBytes + 1024 * 1024) : await xzDecompress(file, signal);
+    entries = parseTar(tar);
+  }
+  return writeExtraction(envDir, planExtraction(entries, { strip: step.stripComponents, to: step.to }), toolDirs);
+}
+
+function xzDecompress(file: string, signal: AbortSignal): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("xz", ["-dc", file], { stdio: ["ignore", "pipe", "pipe"], signal });
+    const chunks: Buffer[] = [];
+    let total = 0;
+    let err = "";
+    child.stdout.on("data", (c: Buffer) => {
+      total += c.length;
+      if (total > ENV_LIMITS.extractBytes) child.kill("SIGKILL");
+      else chunks.push(c);
+    });
+    child.stderr.on("data", (c: Buffer) => (err = (err + c.toString()).slice(-400)));
+    child.on("error", (e) => reject(new EnvInstallError(`tar.xz needs xz on this machine: ${e.message}`)));
+    child.on("close", (code) => {
+      if (total > ENV_LIMITS.extractBytes) reject(new EnvInstallError(`the archive unpacks to more than ${ENV_LIMITS.extractBytes} bytes`));
+      else if (code !== 0) reject(new EnvInstallError(`xz failed: ${err.trim()}`));
+      else resolve(Buffer.concat(chunks));
+    });
+  });
+}
+
+// --- Downloads.
+
+export type FetchLike = (url: string, init: { redirect: "manual"; signal: AbortSignal; headers: Record<string, string> }) => Promise<Response>;
+
+/**
+ * Downloads one recipe file: https only, every redirect hop https and on the recipe's host list, at most `bytes`
+ * bytes, then the sha256 must match. A file already in `cacheDir` under its sha256 is reused after its hash is checked
+ * again. Returns the path of the verified file.
+ */
+export async function downloadPinned(o: { url: string; sha256: string; bytes: number; hosts: readonly string[]; dir: string; cacheDir?: string | null; signal: AbortSignal; fetch?: FetchLike }): Promise<string> {
+  if (o.cacheDir) {
+    const cached = path.join(o.cacheDir, o.sha256);
+    if (existsSync(cached) && (await sha256File(cached).catch(() => "")) === o.sha256) return cached;
+  }
+  const get = o.fetch ?? (fetch as unknown as FetchLike);
+  let url = o.url;
+  let res: Response | null = null;
+  for (let hop = 0; hop <= ENV_LIMITS.redirects; hop++) {
+    const u = new URL(url);
+    if (u.protocol !== "https:") throw new EnvInstallError(`download ${o.url}: redirected to ${u.protocol} (https only)`);
+    if (!o.hosts.includes(u.hostname)) throw new EnvInstallError(`download ${o.url}: ${u.hostname} is not one of the recipe's hosts (${o.hosts.join(", ")})`);
+    const r = await get(url, { redirect: "manual", signal: o.signal, headers: { "user-agent": `venstudio-worker/${VERSION}` } });
+    if (r.status >= 300 && r.status < 400) {
+      const loc = r.headers.get("location");
+      if (!loc) throw new EnvInstallError(`download ${o.url}: redirect without a location`);
+      url = new URL(loc, url).href;
+      continue;
+    }
+    res = r;
+    break;
+  }
+  if (!res) throw new EnvInstallError(`download ${o.url}: more than ${ENV_LIMITS.redirects} redirects`);
+  if (!res.ok || !res.body) throw new EnvInstallError(`download ${o.url}: HTTP ${res.status}`);
+  const declared = Number(res.headers.get("content-length") ?? NaN);
+  if (Number.isFinite(declared) && declared > o.bytes) throw new EnvInstallError(`download ${o.url}: ${declared} bytes, the recipe says ${o.bytes}`);
+  await mkdir(o.dir, { recursive: true });
+  const part = path.join(o.dir, `${o.sha256}.part`);
+  const hash = createHash("sha256");
+  let total = 0;
+  const cap = new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      total += chunk.length;
+      if (total > o.bytes) return cb(new EnvInstallError(`download ${o.url}: larger than the ${o.bytes} bytes the recipe says`));
+      hash.update(chunk);
+      cb(null, chunk);
+    },
+  });
+  try {
+    await pipeline(Readable.fromWeb(res.body as unknown as NodeWebReadableStream<Uint8Array>), cap, createWriteStream(part));
+  } catch (err) {
+    await rm(part, { force: true });
+    throw err instanceof EnvInstallError ? err : new EnvInstallError(`download ${o.url}: ${(err as Error).message}`);
+  }
+  const got = hash.digest("hex");
+  if (total !== o.bytes || got !== o.sha256) {
+    await rm(part, { force: true });
+    throw new EnvInstallError(`download ${o.url}: sha256 mismatch (got ${got.slice(0, 16)}… ${total} bytes, the recipe pins ${o.sha256.slice(0, 16)}… ${o.bytes} bytes); nothing was installed`);
+  }
+  const final = o.cacheDir ? path.join(o.cacheDir, o.sha256) : path.join(o.dir, o.sha256);
+  await mkdir(path.dirname(final), { recursive: true });
+  await rename(part, final);
+  return final;
+}
+
+// --- Requirements of the machine (checked, never installed).
+
+export interface RequireProbes {
+  version(tool: "node" | "npm" | "python3" | "ffmpeg"): string | null;
+  glibc(): string | null;
+  lib(name: string): boolean;
+}
+
+function versionOut(cmd: string, args: string[]): string | null {
+  try {
+    const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 15_000 });
+    if (r.status !== 0) return null;
+    return /(\d+\.\d+(\.\d+)?)/.exec(`${r.stdout} ${r.stderr}`)?.[1] ?? "0";
+  } catch {
+    return null;
+  }
+}
+
+export const systemRequireProbes: RequireProbes = {
+  version(tool) {
+    if (tool === "node") return process.versions.node;
+    if (tool === "npm") return versionOut(npmPath(), ["--version"]);
+    if (tool === "python3") return versionOut("python3", ["--version"]);
+    return versionOut(ffmpegPath(), ["-version"]);
+  },
+  glibc() {
+    const report = (process as unknown as { report?: { getReport(): { header?: { glibcVersionRuntime?: string } } } }).report;
+    return report?.getReport().header?.glibcVersionRuntime ?? null;
+  },
+  lib(name) {
+    const dirs = ["/lib", "/usr/lib", "/lib64", "/usr/lib64", "/lib/x86_64-linux-gnu", "/usr/lib/x86_64-linux-gnu", "/lib/aarch64-linux-gnu", "/usr/lib/aarch64-linux-gnu"];
+    return dirs.some((d) => existsSync(path.join(d, name)));
+  },
+};
+
+/** What the machine lacks for a recipe, in plain words; empty when everything is there. */
+export function missingRequirements(recipe: Pick<EnvRecipe, "requires" | "steps">, probes: RequireProbes = systemRequireProbes): string[] {
+  const out: string[] = [];
+  const reqs = [...recipe.requires];
+  for (const s of recipe.steps) if (s.kind === "pip") reqs.push({ tool: "python3", min: s.python, name: null });
+  for (const r of reqs) {
+    if (r.tool === "lib") {
+      if (!probes.lib(r.name as string)) out.push(`the library ${r.name} (install it on the machine; recipes never install system packages)`);
+      continue;
+    }
+    const have = r.tool === "glibc" ? probes.glibc() : probes.version(r.tool as "node" | "npm" | "python3" | "ffmpeg");
+    if (have === null) out.push(`${r.tool}${r.min ? ` ${r.min} or later` : ""} (not found)`);
+    else if (r.min && compareVersions(have, r.min) < 0) out.push(`${r.tool} ${r.min} or later (this machine has ${have})`);
+  }
+  return [...new Set(out)];
+}
+
+// --- Running a recipe's commands.
+
+export interface CommandRun {
+  code: number | null;
+  signal: string | null;
+  timedOut: boolean;
+  output: string;
+}
+
+/**
+ * Runs a fixed argv (no shell), in its own process group so a timeout stops everything it started, with a bounded
+ * capture of stdout and stderr. `prefix` (net isolation) goes before the program.
+ */
+export function runFixed(argv: readonly string[], o: { cwd: string; env: Record<string, string>; timeoutMs: number; signal?: AbortSignal; prefix?: readonly string[]; onLine?: (line: string) => void }): Promise<CommandRun> {
+  return new Promise((resolve) => {
+    const full = [...(o.prefix ?? []), ...argv];
+    let output = "";
+    let timedOut = false;
+    const keep = (c: Buffer) => {
+      const s = c.toString("utf8");
+      output = (output + s).slice(-ENV_LIMITS.logBytes);
+      if (o.onLine) for (const l of s.split("\n")) if (l.trim()) o.onLine(l.trim().slice(0, 300));
+    };
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(full[0], full.slice(1), { cwd: o.cwd, env: o.env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    } catch (err) {
+      resolve({ code: null, signal: null, timedOut: false, output: `could not start ${full[0]}: ${(err as Error).message}` });
+      return;
+    }
+    const kill = () => {
+      try {
+        if (child.pid) process.kill(-child.pid, "SIGKILL");
+      } catch {}
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      kill();
+    }, o.timeoutMs);
+    const onAbort = () => kill();
+    o.signal?.addEventListener("abort", onAbort, { once: true });
+    child.stdout?.on("data", keep);
+    child.stderr?.on("data", keep);
+    child.on("error", (err) => {
+      output = (output + `\n${err.message}`).slice(-ENV_LIMITS.logBytes);
+    });
+    child.on("close", (code, sig) => {
+      clearTimeout(timer);
+      o.signal?.removeEventListener("abort", onAbort);
+      kill();
+      resolve({ code, signal: sig, timedOut, output });
+    });
+  });
+}
+
+let netIsolation: Promise<string[] | null> | null = null;
+
+/**
+ * The argv prefix that runs a command without network, or null where this machine cannot do it unprivileged.
+ * Tries a user plus network namespace (`unshare --user --map-current-user --net`, then `--map-root-user`: root only
+ * inside a namespace that has no network and no privileges outside it). Once per process.
+ */
+export function netIsolationPrefix(): Promise<string[] | null> {
+  netIsolation ??= (async () => {
+    if (process.env.VENSTUDIO_NET_ISOLATION === "off") return null;
+    for (const p of [
+      ["unshare", "--user", "--map-current-user", "--net", "--"],
+      ["unshare", "--user", "--map-root-user", "--net", "--"],
+    ]) {
+      const r = spawnSync(p[0], [...p.slice(1), process.execPath, "-e", "require('node:net').connect(9,'127.0.0.1').on('error',()=>process.exit(0)).on('connect',()=>process.exit(3))"], { timeout: 10_000, stdio: "ignore" });
+      if (r.status === 0) return p;
+    }
+    return null;
+  })();
+  return netIsolation;
+}
+
+/** A loopback "proxy" that refuses every request and counts them: how a render without a namespace is caught going out. */
+export async function startBlackholeProxy(): Promise<{ url: string; attempts: () => string[]; close: () => Promise<void> }> {
+  const seen: string[] = [];
+  const server = createServer((req, res) => {
+    seen.push(`${req.method} ${String(req.url).slice(0, 200)}`);
+    res.writeHead(403).end("venstudio: no network during render");
+  });
+  server.on("connect", (req, socket) => {
+    seen.push(`CONNECT ${String(req.url).slice(0, 200)}`);
+    socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as AddressInfo).port;
+  return { url: `http://127.0.0.1:${port}`, attempts: () => [...seen], close: () => new Promise((r) => server.close(() => r())) };
+}
+
+// --- Installed packs with an environment (from the signed env-packs.json bundle).
+
+export interface EnvPackFile {
+  path: string;
+  text: string;
+}
+export interface EnvPacksBundle {
+  format: number;
+  commit: string | null;
+  packs: Array<{ id: string; version: string; sha256: string; files: EnvPackFile[] }>;
+}
+
+/** Reads the env-packs bundle (apps/portal/lib/env-packs.ts writes it). Checks every pack's digest. Throws on anything else. */
+export function parseEnvPacksBundle(raw: unknown): EnvPacksBundle {
+  const bad = (m: string): never => {
+    throw new Error(`env packs: ${m}`);
+  };
+  if (!isRecord(raw) || raw.kind !== ENV_PACKS_KIND) return bad("not an env packs bundle");
+  if (raw.format !== ENV_PACKS_FORMAT) return bad(`unknown format ${String(raw.format)} (this worker reads ${ENV_PACKS_FORMAT}; update the worker)`);
+  if (!Array.isArray(raw.packs) || raw.packs.length > PACKS_LIMITS.packs) return bad("no valid pack list");
+  const seen = new Set<string>();
+  const packs = raw.packs.map((p, i) => {
+    if (!isRecord(p) || typeof p.id !== "string" || !ENV_ID_RE.test(p.id) || seen.has(p.id)) return bad(`pack ${i + 1} has no valid or a repeated id`);
+    seen.add(p.id);
+    if (typeof p.version !== "string" || !ENV_SEMVER_RE.test(p.version)) return bad(`${p.id} has no valid version`);
+    if (typeof p.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(p.sha256)) return bad(`${p.id} has no valid sha256`);
+    if (!Array.isArray(p.files) || p.files.length === 0 || p.files.length > BUNDLE_LIMITS.files) return bad(`${p.id} has no valid file list`);
+    let bytes = 0;
+    const names = new Set<string>();
+    const files = p.files.map((f) => {
+      if (!isRecord(f) || !safeRelPath(f.path) || typeof f.text !== "string" || names.has(f.path)) return bad(`${p.id} has an unsafe or repeated file`);
+      names.add(f.path);
+      bytes += Buffer.byteLength(f.text);
+      if (Buffer.byteLength(f.text) > BUNDLE_LIMITS.fileBytes) return bad(`${p.id}/${f.path} is too large`);
+      return { path: f.path, text: f.text };
+    });
+    if (bytes > BUNDLE_LIMITS.totalBytes) return bad(`${p.id} is too large`);
+    const digest = renderDigestOf(Object.fromEntries(files.map((f) => [f.path, createHash("sha256").update(f.text, "utf8").digest("hex")])));
+    if (digest !== p.sha256) return bad(`${p.id}@${p.version}: its files do not match its digest`);
+    return { id: p.id, version: p.version, sha256: p.sha256, files };
+  });
+  return { format: ENV_PACKS_FORMAT, commit: typeof raw.commit === "string" ? raw.commit.slice(0, 64) : null, packs };
+}
+
+export const envPacksDir = (home: string) => path.join(home, "packs");
+export const envsDir = (home: string) => path.join(home, "envs");
+export const envPacksFile = (home: string) => path.join(envPacksDir(home), UPDATE_ENV_PACKS_FILE);
+
+/**
+ * Installs the bundle's packs to <home>/packs/<id>@<version>/ (each written to a temporary folder, then renamed) and
+ * removes pack folders the bundle no longer lists. Nothing here runs: environments install later, between jobs.
+ */
+export async function installEnvPacks(home: string, body: Uint8Array): Promise<EnvPacksBundle> {
+  if (body.length > UPDATE_MAX_FILE_BYTES) throw new Error(`env packs: larger than ${UPDATE_MAX_FILE_BYTES} bytes`);
+  const bundle = parseEnvPacksBundle(JSON.parse(Buffer.from(body).toString("utf8")) as unknown);
+  for (const p of bundle.packs) for (const f of p.files) if (f.path === "style.json") parseEnvironment((JSON.parse(f.text) as { environment?: unknown }).environment);
+  const root = envPacksDir(home);
+  await mkdir(root, { recursive: true });
+  const keep = new Set(bundle.packs.map((p) => `${p.id}@${p.version}`));
+  for (const p of bundle.packs) {
+    const dir = path.join(root, `${p.id}@${p.version}`);
+    const digest = existsSync(dir) ? renderDigestOf(await treeHashes(dir)) : null;
+    if (digest === p.sha256) continue;
+    const tmp = `${dir}.part`;
+    await rm(tmp, { recursive: true, force: true });
+    for (const f of p.files) {
+      const abs = path.join(tmp, f.path);
+      await mkdir(path.dirname(abs), { recursive: true });
+      await writeFile(abs, f.text, { encoding: "utf8", mode: 0o644 });
+    }
+    await rm(dir, { recursive: true, force: true });
+    await rename(tmp, dir);
+  }
+  for (const name of await readdir(root).catch(() => [] as string[])) {
+    if (name === UPDATE_ENV_PACKS_FILE || name.startsWith(".")) continue;
+    if (!keep.has(name)) await rm(path.join(root, name), { recursive: true, force: true });
+  }
+  await writeFile(`${envPacksFile(home)}.part`, body);
+  await rename(`${envPacksFile(home)}.part`, envPacksFile(home));
+  return bundle;
+}
+
+export async function installedEnvPacksSha(home: string): Promise<string | null> {
+  return existsSync(envPacksFile(home)) ? sha256File(envPacksFile(home)).catch(() => null) : null;
+}
+
+export interface InstalledEnvPack {
+  id: string;
+  version: string;
+  engine: string;
+  dir: string;
+  recipe: EnvRecipe;
+}
+
+/** The packs of the installed bundle whose folder still matches its digest, with their parsed recipes. */
+export async function installedEnvPacks(home: string): Promise<{ packs: InstalledEnvPack[]; problems: string[] }> {
+  const packs: InstalledEnvPack[] = [];
+  const problems: string[] = [];
+  let bundle: EnvPacksBundle;
+  try {
+    bundle = parseEnvPacksBundle(JSON.parse(await readFile(envPacksFile(home), "utf8")) as unknown);
+  } catch {
+    return { packs, problems };
+  }
+  for (const p of bundle.packs) {
+    const dir = path.join(envPacksDir(home), `${p.id}@${p.version}`);
+    try {
+      if (renderDigestOf(await treeHashes(dir)) !== p.sha256) throw new Error("its files changed since they were installed");
+      const style = JSON.parse(await readFile(path.join(dir, "style.json"), "utf8")) as { renderer?: { engine?: unknown }; environment?: unknown };
+      packs.push({ id: p.id, version: p.version, engine: String(style.renderer?.engine ?? ""), dir, recipe: parseEnvironment(style.environment) });
+    } catch (err) {
+      problems.push(`${p.id}@${p.version}: ${(err as Error).message}`);
+    }
+  }
+  return { packs, problems };
+}
+
+// --- Install state (persisted in <home>/envs/state.json) and the state machine.
+
+export type EnvStatus = "installing" | "ready" | "failed";
+export interface EnvStateEntry {
+  id: string;
+  version: string;
+  status: EnvStatus;
+  detail: string;
+  attempts: number;
+  nextAttemptAt: number;
+  updatedAt: number;
+  recipeSha256: string;
+}
+export type EnvState = Record<string, EnvStateEntry>;
+
+/** What a worker tells the portal about its environments (claim body, 0.12.0+). Mirror of EnvironmentReport in the protocol. */
+export interface EnvReport {
+  id: string;
+  version: string;
+  status: EnvStatus;
+  detail: string;
+  packs: string[];
+  at: string;
+}
+
+export async function readEnvState(home: string): Promise<EnvState> {
+  try {
+    const raw = JSON.parse(await readFile(path.join(envsDir(home), "state.json"), "utf8")) as unknown;
+    return isRecord(raw) ? (raw as EnvState) : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function writeEnvState(home: string, state: EnvState): Promise<void> {
+  const file = path.join(envsDir(home), "state.json");
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(`${file}.part`, `${JSON.stringify(state, null, 2)}\n`);
+  await rename(`${file}.part`, file);
+}
+
+export const recipeSha256 = (r: EnvRecipe) => createHash("sha256").update(canonicalJson(r)).digest("hex");
+export const envBackoffMs = (attempts: number) => Math.min(ENV_RETRY.maxMs, ENV_RETRY.firstMs * 2 ** Math.max(0, attempts - 1));
+
+/** The environments the installed packs need (one per id@version), with the packs that use each. Pure. */
+export function neededEnvironments(packs: readonly InstalledEnvPack[]): Array<{ recipe: EnvRecipe; packs: InstalledEnvPack[] }> {
+  const out = new Map<string, { recipe: EnvRecipe; packs: InstalledEnvPack[] }>();
+  for (const p of packs) {
+    const k = envKey(p.recipe);
+    const e = out.get(k);
+    if (e) e.packs.push(p);
+    else out.set(k, { recipe: p.recipe, packs: [p] });
+  }
+  return [...out.values()];
+}
+
+/**
+ * The next environment to install, or null. Pure: an environment is due when it has no entry, its recipe changed, it
+ * is "installing" from a run that never finished (a restart), or it failed and its backoff is over.
+ */
+export function nextEnvToInstall(needed: ReadonlyArray<{ recipe: EnvRecipe }>, state: Readonly<EnvState>, now: number, platform: string | null = envPlatform(), usable?: ReadonlySet<string>): EnvRecipe | null {
+  for (const n of needed) {
+    if (!platform || !n.recipe.platforms.includes(platform)) continue;
+    const s = state[envKey(n.recipe)];
+    if (!s || s.recipeSha256 !== recipeSha256(n.recipe)) return n.recipe;
+    // "installing" left by a process that died mid-install (an OOM kill, a power cut) counts as a failed attempt: it
+    // waits for the backoff its start already set, so a crash does not become a loop.
+    if ((s.status === "failed" || s.status === "installing") && now >= s.nextAttemptAt) return n.recipe;
+    // Ready on paper but not usable here (its folder is gone, or its probe fails now): install it again.
+    if (s.status === "ready" && usable && !usable.has(envKey(n.recipe))) return n.recipe;
+  }
+  return null;
+}
+
+/** The state when an install starts: the attempt is counted now, so a crash mid-install still backs off. Pure. */
+export function startEnvAttempt(state: Readonly<EnvState>, recipe: EnvRecipe, now: number): EnvState {
+  const k = envKey(recipe);
+  const prev = state[k];
+  const same = prev?.recipeSha256 === recipeSha256(recipe);
+  const attempts = (same && prev.status !== "ready" ? prev.attempts : 0) + 1;
+  return {
+    ...state,
+    [k]: { id: recipe.id, version: recipe.version, status: "installing", detail: "installing", attempts, nextAttemptAt: now + envBackoffMs(attempts), updatedAt: now, recipeSha256: recipeSha256(recipe) },
+  };
+}
+
+/** The state after an install was stopped on purpose (shutdown, a new bundle): due again at once, the attempt not counted. Pure. */
+export function stopEnvAttempt(state: Readonly<EnvState>, recipe: EnvRecipe, now: number): EnvState {
+  const k = envKey(recipe);
+  const prev = state[k];
+  if (!prev || prev.status !== "installing") return { ...state };
+  return { ...state, [k]: { ...prev, status: "failed", detail: "stopped before it finished; it starts again", attempts: Math.max(0, prev.attempts - 1), nextAttemptAt: 0, updatedAt: now } };
+}
+
+/** The state after an install attempt. Pure. */
+export function recordEnvResult(state: Readonly<EnvState>, recipe: EnvRecipe, result: { ok: true } | { ok: false; reason: string }, now: number): EnvState {
+  const k = envKey(recipe);
+  const prev = state[k];
+  const same = prev !== undefined && prev.recipeSha256 === recipeSha256(recipe);
+  // An attempt started with startEnvAttempt is counted already; one recorded without it counts here.
+  const attempts = result.ok ? 0 : same && prev.status === "installing" ? prev.attempts : (same ? prev.attempts : 0) + 1;
+  return {
+    ...state,
+    [k]: {
+      id: recipe.id,
+      version: recipe.version,
+      status: result.ok ? "ready" : "failed",
+      detail: result.ok ? "probe passed" : result.reason.slice(0, 300),
+      attempts,
+      nextAttemptAt: result.ok ? 0 : now + envBackoffMs(attempts),
+      updatedAt: now,
+      recipeSha256: recipeSha256(recipe),
+    },
+  };
+}
+
+/** The claim body's environments: one per needed environment, with its status (a recipe for another platform says so). Pure. */
+export function envReports(needed: ReadonlyArray<{ recipe: EnvRecipe; packs: readonly InstalledEnvPack[] }>, state: Readonly<EnvState>, platform: string | null = envPlatform(), usable?: ReadonlySet<string>): EnvReport[] {
+  return needed.slice(0, 50).map((n) => {
+    const s = state[envKey(n.recipe)];
+    const fresh = s && s.recipeSha256 === recipeSha256(n.recipe);
+    const off = !platform || !n.recipe.platforms.includes(platform);
+    // "ready" is only said while the environment is usable here (its probe passes); otherwise it is due again.
+    const broken = fresh && s.status === "ready" && usable !== undefined && !usable.has(envKey(n.recipe));
+    return {
+      id: n.recipe.id,
+      version: n.recipe.version,
+      status: off || broken ? "failed" : fresh ? s.status : "installing",
+      detail: off
+        ? `this machine (${process.platform}-${process.arch}) is not one of the recipe's platforms (${n.recipe.platforms.join(", ")})`
+        : broken
+          ? "installed, but its probe no longer passes here (or its folder is gone); it installs again"
+          : fresh
+            ? s.detail
+            : "waiting to install",
+      packs: n.packs.map((p) => `${p.id}@${p.version}`).slice(0, 20),
+      at: new Date(fresh ? s.updatedAt : Date.now()).toISOString(),
+    };
+  });
+}
+
+/** Every file of an installed environment (no symlink followed), for its manifest: path -> sha256 or "link:<target>". */
+async function envFileList(dir: string): Promise<{ files: Record<string, string>; bytes: number }> {
+  const files: Record<string, string> = {};
+  let bytes = 0;
+  const walk = async (d: string, prefix: string, depth: number) => {
+    if (depth > 40) throw new EnvInstallError("the environment is nested too deep");
+    for (const name of (await readdir(d)).sort()) {
+      if (!prefix && name === ENV_MANIFEST) continue;
+      const p = path.join(d, name);
+      const rel = prefix ? `${prefix}/${name}` : name;
+      const st = await lstat(p);
+      if (st.isSymbolicLink()) files[rel] = `link:${await readlink(p)}`;
+      else if (st.isDirectory()) await walk(p, rel, depth + 1);
+      else if (st.isFile()) {
+        files[rel] = await sha256File(p);
+        bytes += st.size;
+      }
+      if (Object.keys(files).length > ENV_LIMITS.extractEntries * 2) throw new EnvInstallError("the environment has too many files");
+    }
+  };
+  await walk(dir, "", 0);
+  return { files, bytes };
+}
+
+export interface EnvHooks {
+  fetch?: FetchLike;
+  probes?: RequireProbes;
+  /** Runs npm and pip (tests replace it). */
+  run?: (argv: string[], o: { cwd: string; env: Record<string, string>; timeoutMs: number; signal: AbortSignal }) => Promise<CommandRun>;
+  freeGb?: (dir: string) => Promise<number | null>;
+  isRoot?: () => boolean;
+  platform?: string | null;
+}
+
+/** Bytes the disk must have free before an install: three times the downloads (archive, unpacked, npm/pip) plus 256 MB. */
+export function envDiskNeedBytes(recipe: Pick<EnvRecipe, "steps">): number {
+  const dl = recipe.steps.reduce((n, s) => n + (s.kind === "download" ? s.bytes : 0), 0);
+  const tools = recipe.steps.some((s) => s.kind === "npm" || s.kind === "pip") ? 512 * 1024 * 1024 : 0;
+  return dl * 3 + tools + 256 * 1024 * 1024;
+}
+
+const failText = (what: string, r: CommandRun) =>
+  `${what} ${r.timedOut ? "timed out" : `exited with ${r.code ?? r.signal}`}: ${r.output.trim().split("\n").slice(-6).join(" | ").slice(-600)}`;
+
+/**
+ * Installs one environment into `<root>/<id>@<version>/` from the pack in `packDir`, then runs its probe. Resolves
+ * with { ok: true } only when the probe passed (the manifest of installed files is written then); on any failure the
+ * folder is removed and the reason returned. The same function serves the worker and venstudio-styles CI (env-install).
+ */
+export async function installEnvironment(o: { recipe: EnvRecipe; packDir: string; root: string; cacheDir?: string | null; signal: AbortSignal; hooks?: EnvHooks; log?: (m: string) => void }): Promise<{ ok: true; envDir: string; probe: string } | { ok: false; reason: string }> {
+  const r = o.recipe;
+  const h = o.hooks ?? {};
+  const say = o.log ?? (() => {});
+  const envDir = path.join(o.root, envKey(r));
+  try {
+    if ((h.isRoot ?? (() => typeof process.getuid === "function" && process.getuid() === 0))()) throw new EnvInstallError("refused to install as root: environments install as the worker's own user");
+    const platform = h.platform === undefined ? envPlatform() : h.platform;
+    if (!platform || !r.platforms.includes(platform)) throw new EnvInstallError(`this machine is not one of the recipe's platforms (${r.platforms.join(", ")})`);
+    const missing = missingRequirements(r, h.probes ?? systemRequireProbes);
+    if (missing.length > 0) throw new EnvInstallError(`this machine lacks ${missing.join("; ")}`);
+    await mkdir(o.root, { recursive: true });
+    const need = envDiskNeedBytes(r);
+    const free = await (h.freeGb ?? freeDiskGb)(o.root);
+    if (free !== null && free * 1024 ** 3 < need + ENV_DISK_RESERVE_GB * 1024 ** 3) {
+      throw new EnvInstallError(`not enough disk: ${free} GB free, the install needs about ${(need / 1024 ** 3).toFixed(1)} GB plus ${ENV_DISK_RESERVE_GB} GB kept free`);
+    }
+    const budget = Number(process.env.VENSTUDIO_ENV_BUDGET_GB ?? ENV_DEFAULT_BUDGET_GB);
+    if (Number.isFinite(budget) && budget > 0) {
+      const used = (await dirBytes(o.root).catch(() => 0)) - (await dirBytes(envDir).catch(() => 0));
+      if (used + need > budget * 1024 ** 3) throw new EnvInstallError(`the environments would use more than VENSTUDIO_ENV_BUDGET_GB=${budget} GB (${(used / 1024 ** 3).toFixed(1)} GB used)`);
+    }
+    await rm(envDir, { recursive: true, force: true });
+    await mkdir(envDir, { recursive: true, mode: 0o755 });
+    const scratch = await mkdtemp(path.join(o.root, `.work-${r.id}-`));
+    try {
+      const run = h.run ?? ((argv, ro) => runFixed(argv, ro));
+      const toolEnv = commandEnv({ recipe: r, envDir, home: scratch, tmp: scratch, network: true });
+      const toolDirs = r.steps.flatMap((x) => (x.kind === "npm" || x.kind === "pip" ? [x.to] : []));
+      for (const s of r.steps) {
+        if (s.kind === "download") {
+          if (s.platform && s.platform !== platform) continue;
+          say(`downloading ${s.url}`);
+          // A stalled server must not hold the install forever: at least 10 min, or 100 KB/s for a large file.
+          const dlSignal = AbortSignal.any([o.signal, AbortSignal.timeout(Math.max(ENV_LIMITS.downloadMinMs, Math.ceil(s.bytes / 100)))]);
+          const file = await downloadPinned({ url: s.url, sha256: s.sha256, bytes: s.bytes, hosts: r.hosts, dir: scratch, cacheDir: o.cacheDir ?? null, signal: dlSignal, fetch: h.fetch });
+          const n = await extractDownload(file, s, envDir, o.signal, toolDirs);
+          say(`${path.basename(new URL(s.url).pathname)}: sha256 verified, ${n} entr${n === 1 ? "y" : "ies"} into ${s.to}`);
+        } else if (s.kind === "npm") {
+          await assertNoSymlinkOnPath(envDir, s.to);
+          const dir = path.join(envDir, s.to);
+          await mkdir(dir, { recursive: true });
+          const lockText = await readFile(path.join(o.packDir, s.lockfile), "utf8");
+          checkNpmLock(lockText, r.hosts);
+          await writeFile(path.join(dir, "package-lock.json"), lockText);
+          await copyFile(path.join(o.packDir, path.dirname(s.lockfile), "package.json"), path.join(dir, "package.json"));
+          // Separate empty user and global configs: npm refuses one file loaded as both ("double-loading config").
+          const rc = path.join(scratch, "npmrc");
+          await writeFile(rc, "");
+          await writeFile(`${rc}-global`, "");
+          const env = { ...toolEnv, npm_config_userconfig: rc, npm_config_globalconfig: `${rc}-global`, npm_config_cache: path.join(o.cacheDir ?? scratch, "npm"), npm_config_update_notifier: "false", npm_config_fund: "false", npm_config_audit: "false" };
+          say(`npm ci --omit=dev --ignore-scripts in ${s.to}`);
+          const got = await run([npmPath(), "ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: dir, env, timeoutMs: ENV_LIMITS.npmTimeoutMs, signal: o.signal });
+          if (got.code !== 0) throw new EnvInstallError(failText("npm ci", got));
+          if (s.allowScripts.length > 0) {
+            const rb = await run([npmPath(), "rebuild", "--ignore-scripts=false", ...s.allowScripts], { cwd: dir, env, timeoutMs: ENV_LIMITS.npmTimeoutMs, signal: o.signal });
+            if (rb.code !== 0) throw new EnvInstallError(failText(`npm rebuild ${s.allowScripts.join(" ")}`, rb));
+          }
+        } else if (s.kind === "pip") {
+          await assertNoSymlinkOnPath(envDir, s.to);
+          const venv = path.join(envDir, s.to);
+          const req = path.join(o.packDir, s.requirements);
+          say(`python3 -m venv ${s.to}; pip install --require-hashes --only-binary=:all: --no-deps`);
+          const mk = await run(["python3", "-m", "venv", venv], { cwd: envDir, env: toolEnv, timeoutMs: 5 * 60_000, signal: o.signal });
+          if (mk.code !== 0) throw new EnvInstallError(failText("python3 -m venv", mk));
+          const env = { ...toolEnv, PIP_CONFIG_FILE: "/dev/null", PIP_INDEX_URL: "https://pypi.org/simple", PIP_DISABLE_PIP_VERSION_CHECK: "1", PIP_NO_INPUT: "1" };
+          const got = await run([path.join(venv, "bin", "python"), "-m", "pip", "install", "--require-hashes", "--only-binary=:all:", "--no-deps", "--no-cache-dir", "-r", req], { cwd: envDir, env, timeoutMs: ENV_LIMITS.pipTimeoutMs, signal: o.signal });
+          if (got.code !== 0) throw new EnvInstallError(failText("pip install", got));
+        }
+      }
+      await assertLinksInside(envDir, toolDirs);
+      const probe = await probeEnvironment({ recipe: r, packDir: o.packDir, envDir, workDir: scratch, signal: o.signal, run: h.run });
+      if (!probe.ok) throw new EnvInstallError(probe.reason);
+      const list = await envFileList(envDir);
+      await writeFile(
+        path.join(envDir, ENV_MANIFEST),
+        `${JSON.stringify({ id: r.id, version: r.version, recipeSha256: recipeSha256(r), installedAt: new Date().toISOString(), worker: VERSION, probe: probe.output.slice(0, 200), bytes: list.bytes, files: list.files }, null, 1)}\n`,
+      );
+      say(`env:${envKey(r)} ready (${Object.keys(list.files).length} files, ${(list.bytes / 1024 ** 2).toFixed(1)} MB): ${probe.output.slice(0, 120)}`);
+      return { ok: true, envDir, probe: probe.output };
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
+    }
+  } catch (err) {
+    await rm(envDir, { recursive: true, force: true }).catch(() => {});
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+async function dirBytes(dir: string): Promise<number> {
+  let n = 0;
+  const walk = async (d: string) => {
+    for (const name of await readdir(d)) {
+      const st = await lstat(path.join(d, name));
+      if (st.isDirectory()) await walk(path.join(d, name));
+      else n += st.size;
+    }
+  };
+  await walk(dir);
+  return n;
+}
+
+/** The worker's own check of a pack's npm lockfile (the styles validator applies the same rules). Throws EnvInstallError. */
+export function checkNpmLock(text: string, hosts: readonly string[]): void {
+  let lock: unknown;
+  try {
+    lock = JSON.parse(text);
+  } catch {
+    throw new EnvInstallError("the npm lockfile is not JSON");
+  }
+  if (!isRecord(lock) || ![2, 3].includes(lock.lockfileVersion as number) || !isRecord(lock.packages)) throw new EnvInstallError("the npm lockfile must be v2 or v3");
+  for (const [k, e] of Object.entries(lock.packages)) {
+    if (k === "") continue;
+    if (!k.startsWith("node_modules/") || !isRecord(e) || e.link === true) throw new EnvInstallError(`the npm lockfile entry ${k} is not a registry package`);
+    let host = "";
+    try {
+      const u = new URL(String(e.resolved));
+      host = u.protocol === "https:" ? u.hostname : "";
+    } catch {}
+    if (!hosts.includes(host)) throw new EnvInstallError(`the npm lockfile entry ${k} does not come from an https host of the recipe`);
+    if (typeof e.integrity !== "string" || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(e.integrity)) throw new EnvInstallError(`the npm lockfile entry ${k} has no sha512 integrity`);
+  }
+}
+
+/** Runs a recipe's probe: its fixed argv, the minimal env, no network where this machine can enforce it. */
+export async function probeEnvironment(o: { recipe: EnvRecipe; packDir: string; envDir: string; workDir: string; signal?: AbortSignal; run?: EnvHooks["run"] }): Promise<{ ok: true; output: string } | { ok: false; reason: string }> {
+  const r = o.recipe;
+  const venv = r.steps.find((s) => s.kind === "pip")?.to ?? null;
+  const argv = substituteArgv(r.probe.argv, { packDir: o.packDir, envDir: o.envDir, workDir: o.workDir }, ENV_PROBE_PLACEHOLDERS);
+  argv[0] = resolveProgram(r.probe.argv[0], { envDir: o.envDir, venv });
+  const env = commandEnv({ recipe: r, envDir: o.envDir, home: o.workDir, tmp: o.workDir });
+  const prefix = o.run ? [] : ((await netIsolationPrefix()) ?? []);
+  const got = await (o.run ?? ((a, ro) => runFixed(a, { ...ro, prefix })))(argv, { cwd: o.workDir, env, timeoutMs: r.probe.timeoutSec * 1000, signal: o.signal ?? new AbortController().signal });
+  const out = got.output.trim();
+  if (got.timedOut) return { ok: false, reason: `the probe timed out after ${r.probe.timeoutSec} s: ${out.slice(-300)}` };
+  if (got.code !== r.probe.exitCode) return { ok: false, reason: `the probe exited with ${got.code ?? got.signal}, expected ${r.probe.exitCode}: ${out.slice(-400)}` };
+  if (r.probe.stdout && !new RegExp(r.probe.stdout, "m").test(out)) return { ok: false, reason: `the probe's output does not match /${r.probe.stdout}/: ${out.slice(-300)}` };
+  return { ok: true, output: out.split("\n").slice(-1)[0] ?? "" };
+}
+
+const envProbeCache = new Map<string, Promise<boolean>>();
+
+/**
+ * Environments ready here: state "ready" for the same recipe, the manifest written at install, and the probe passing
+ * again once per process (so a machine that changed since the install stops reporting it). Keyed id@version.
+ */
+export async function readyEnvironments(home: string, packs: readonly InstalledEnvPack[], state: Readonly<EnvState>): Promise<Set<string>> {
+  const ready = new Set<string>();
+  for (const n of neededEnvironments(packs)) {
+    const k = envKey(n.recipe);
+    const s = state[k];
+    const dir = path.join(envsDir(home), k);
+    if (!s || s.status !== "ready" || s.recipeSha256 !== recipeSha256(n.recipe) || !existsSync(path.join(dir, ENV_MANIFEST))) continue;
+    let p = envProbeCache.get(`${home}\0${k}\0${s.recipeSha256}`);
+    if (!p) {
+      p = (async () => {
+        const work = await mkdtemp(path.join(os.tmpdir(), "vs-env-probe-"));
+        try {
+          return (await probeEnvironment({ recipe: n.recipe, packDir: n.packs[0].dir, envDir: dir, workDir: work })).ok;
+        } finally {
+          await rm(work, { recursive: true, force: true });
+        }
+      })();
+      envProbeCache.set(`${home}\0${k}\0${s.recipeSha256}`, p);
+    }
+    if (await p) ready.add(k);
+    else envProbeCache.delete(`${home}\0${k}\0${s.recipeSha256}`); // only a pass is cached: a failure is probed again
+  }
+  return ready;
+}
+
+export function clearEnvProbeCache() {
+  envProbeCache.clear();
+}
+
+/**
+ * Removes environment folders no installed pack uses, once a newer version of the same id is ready (or the id is gone
+ * altogether). Runs between jobs, so no job is using them. Returns the folders removed.
+ */
+export async function cleanupEnvironments(home: string, packs: readonly InstalledEnvPack[], state: Readonly<EnvState>): Promise<string[]> {
+  const root = envsDir(home);
+  const used = new Set(neededEnvironments(packs).map((n) => envKey(n.recipe)));
+  const readyIds = new Set(Object.values(state).filter((s) => s.status === "ready" && used.has(`${s.id}@${s.version}`)).map((s) => s.id));
+  const usedIds = new Set([...used].map((k) => k.split("@")[0]));
+  const removed: string[] = [];
+  for (const name of await readdir(root).catch(() => [] as string[])) {
+    if (name.startsWith(".") || name === "state.json" || used.has(name)) continue;
+    const id = name.split("@")[0];
+    if (readyIds.has(id) || !usedIds.has(id)) {
+      await rm(path.join(root, name), { recursive: true, force: true });
+      removed.push(name);
+    }
+  }
+  return removed;
+}
+
+/** Background environment installs, one at a time (the loop starts and finishes them between jobs). */
+export interface EnvTask {
+  recipe: EnvRecipe;
+  abort: AbortController;
+  promise: Promise<void>;
+  result?: { ok: true } | { ok: false; reason: string };
+}
+
+export async function startEnvTask(home: string, hooks?: EnvHooks): Promise<EnvTask | null> {
+  const { packs } = await installedEnvPacks(home);
+  const needed = neededEnvironments(packs);
+  const state = await readEnvState(home);
+  const usable = await readyEnvironments(home, packs, state);
+  const recipe = nextEnvToInstall(needed, state, Date.now(), hooks?.platform === undefined ? envPlatform() : hooks.platform, usable);
+  if (!recipe) return null;
+  const pack = needed.find((n) => envKey(n.recipe) === envKey(recipe))!.packs[0];
+  // The pack's files are copied first, so a new env-packs.json replacing the pack folder cannot pull them away mid-install.
+  const packCopy = await mkdtemp(path.join(os.tmpdir(), `vs-envpack-${recipe.id}-`));
+  await cp(pack.dir, packCopy, { recursive: true });
+  await writeEnvState(home, startEnvAttempt(state, recipe, Date.now()));
+  const abort = new AbortController();
+  const task: EnvTask = { recipe, abort, promise: Promise.resolve() };
+  log(`environment ${envKey(recipe)} (for ${pack.id}@${pack.version}): installing in the background`);
+  const signal = AbortSignal.any([abort.signal, AbortSignal.timeout(ENV_LIMITS.installMaxMs)]);
+  task.promise = installEnvironment({ recipe, packDir: packCopy, root: envsDir(home), cacheDir: path.join(envsDir(home), ".cache"), signal, hooks, log: (m) => log(`environment ${envKey(recipe)}: ${m}`) })
+    .then(
+      (r) => {
+        task.result = r.ok ? { ok: true } : { ok: false, reason: signal.aborted && !abort.signal.aborted ? `the install took longer than ${ENV_LIMITS.installMaxMs / 60_000} min and was stopped (${r.reason})` : r.reason };
+      },
+      (err: unknown) => {
+        task.result = { ok: false, reason: err instanceof Error ? err.message : String(err) };
+      },
+    )
+    .finally(() => rm(packCopy, { recursive: true, force: true }).catch(() => {}));
+  return task;
+}
+
+/** Stops a running install on purpose (shutdown, a new bundle): its folder is removed and it is due again at once. */
+export async function abandonEnvTask(task: EnvTask, home: string): Promise<void> {
+  task.abort.abort();
+  await task.promise;
+  await writeEnvState(home, stopEnvAttempt(await readEnvState(home), task.recipe, Date.now()));
+}
+
+/** Between jobs: records a finished install, reports a failure to the portal, and removes environments nothing uses. */
+export async function finishEnvTask(task: EnvTask, home: string, report?: (detail: string) => Promise<void>): Promise<void> {
+  const r = task.result ?? { ok: false as const, reason: "the install was stopped before it finished" };
+  const state = recordEnvResult(await readEnvState(home), task.recipe, r, Date.now());
+  await writeEnvState(home, state);
+  // The cache keeps downloads for CI; a worker drops them once the environment is in place.
+  await rm(path.join(envsDir(home), ".cache"), { recursive: true, force: true });
+  if (r.ok) {
+    log(`environment ${envKey(task.recipe)} installed and probed; it is reported as ${envCapability(task.recipe)}`);
+    const { packs } = await installedEnvPacks(home);
+    const removed = await cleanupEnvironments(home, packs, state);
+    if (removed.length > 0) log(`removed environments nothing uses any more: ${removed.join(", ")}`);
+  } else {
+    const s = state[envKey(task.recipe)];
+    log(`environment ${envKey(task.recipe)} failed (attempt ${s.attempts}, next try in ${Math.round(envBackoffMs(s.attempts) / 60_000)} min): ${r.reason}`);
+    await report?.(`environment ${envKey(task.recipe)} failed: ${r.reason}`.slice(0, 500));
+  }
+}
+
+// --- Engine command: the pack's render argv, then the shared steps.
+
+export interface CommandPrepared {
+  pack: InstalledEnvPack;
+  render: NonNullable<EnvRecipe["render"]>;
+  envDir: string;
+}
+
+/** The installed command pack and ready environment for a job, or a NonRetryableError naming what is missing. */
+export async function commandPackFor(spec: Pick<RenderSpec, "engine" | "scenePlan">, home: string): Promise<CommandPrepared> {
+  const id = spec.scenePlan?.template;
+  if (!id) throw new NonRetryableError('render-video: engine "command" needs scenePlan.template (the pack id)');
+  const { packs, problems } = await installedEnvPacks(home);
+  const pack = packs.find((p) => p.id === id && p.engine === "command");
+  if (!pack) {
+    throw new NonRetryableError(`render-video: no command pack "${id}" is installed on this worker${problems.length ? ` (${problems.join("; ").slice(0, 300)})` : ""}. It arrives with the next signed update. Nothing was rendered.`);
+  }
+  if (!pack.recipe.render) throw new NonRetryableError(`${pack.id}@${pack.version} has no environment.render`);
+  const ready = await readyEnvironments(home, [pack], await readEnvState(home));
+  if (!ready.has(envKey(pack.recipe))) {
+    const s = (await readEnvState(home))[envKey(pack.recipe)];
+    throw new NonRetryableError(`render-video: ${pack.id}@${pack.version} needs ${envCapability(pack.recipe)}, which is not ready here (${s ? `${s.status}: ${s.detail}` : "not installed yet"}). Nothing was rendered.`);
+  }
+  return { pack, render: pack.recipe.render, envDir: path.join(envsDir(home), envKey(pack.recipe)) };
+}
+
+/** What a command render reads from {props}: the html-capture props, scene starts added, pictures as files in {inDir}. */
+export type CommandProps = Omit<HtmlCaptureProps, "scenes"> & { kind: "command"; scenes: Array<RenderScene & { start: number; startFrame: number; frames: number }> };
+
+export function buildCommandProps(spec: RenderSpec, files: { images: Array<string | null>; font: string | null; drawsCaptions: boolean }): CommandProps {
+  const base = buildHtmlCaptureProps(spec, files);
+  return {
+    ...base,
+    kind: "command",
+    scenes: base.scenes.map((s, i) => ({ ...s, start: base.timeline.startFrames[i] / spec.fps, startFrame: base.timeline.startFrames[i], frames: base.timeline.frames[i] })),
+  };
+}
+
+/** Time limit of a command render: secondsPerVideoSecond for each second of video, at least a minute, at most 4 h. */
+export const commandTimeoutMs = (render: Pick<NonNullable<EnvRecipe["render"]>, "secondsPerVideoSecond">, durationSec: number) =>
+  Math.min(ENV_LIMITS.renderMaxMs, Math.max(60_000, Math.ceil(render.secondsPerVideoSecond * durationSec * 1000)));
+
+/** Width and height of a PNG from its IHDR, or null for anything that is not a PNG. Pure. */
+export function pngSize(head: Uint8Array): { width: number; height: number } | null {
+  const b = Buffer.from(head);
+  if (b.length < 24 || b.readUInt32BE(0) !== 0x89504e47 || b.readUInt32BE(4) !== 0x0d0a1a0a || b.toString("latin1", 12, 16) !== "IHDR") return null;
+  return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
+}
+
+export const commandFrameFile = (f: number) => `${String(f).padStart(6, "0")}.png`;
+
+/** Checks a png-frames output: exactly `frames` files 000000.png.., each a PNG of the job's size. */
+export async function checkCommandFrames(dir: string, o: { frames: number; width: number; height: number }): Promise<void> {
+  const names = (await readdir(dir).catch(() => [] as string[])).filter((n) => !n.startsWith("."));
+  const want = new Set(Array.from({ length: o.frames }, (_v, i) => commandFrameFile(i)));
+  const extra = names.filter((n) => !want.has(n));
+  if (extra.length > 0) throw new NonRetryableError(`the render wrote files that are not frames: ${extra.slice(0, 5).join(", ")}`);
+  if (names.length !== o.frames) throw new NonRetryableError(`the render wrote ${names.length} frames, the job has ${o.frames}`);
+  for (let f = 0; f < o.frames; f++) {
+    const abs = path.join(dir, commandFrameFile(f));
+    const st = await lstat(abs);
+    if (!st.isFile() || st.size > HTML_CAPTURE_LIMITS.frameBytes) throw new NonRetryableError(`${commandFrameFile(f)} is not a frame file of a sane size`);
+    const fh = await open(abs, "r");
+    const head = Buffer.alloc(24);
+    await fh.read(head, 0, 24, 0);
+    await fh.close();
+    const size = pngSize(head);
+    if (!size) throw new NonRetryableError(`${commandFrameFile(f)} is not a PNG`);
+    if (size.width !== o.width || size.height !== o.height) throw new NonRetryableError(`${commandFrameFile(f)} is ${size.width}x${size.height}, the job is ${o.width}x${o.height}`);
+  }
+}
+
+/** ffmpeg arguments that encode a png-frames output (and burn captions) into the muted H.264 the shared steps take. Pure. */
+export function commandFramesFfmpegArgs(o: { dir: string; fps: number; frames: number; output: string; burn: string | null }): string[] {
+  return [
+    "-y", "-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-nostats",
+    "-framerate", String(o.fps), "-start_number", "0", "-i", path.join(o.dir, "%06d.png"),
+    "-frames:v", String(o.frames),
+    "-vf", [o.burn, "format=yuv420p"].filter(Boolean).join(","),
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-threads", "2", "-pix_fmt", "yuv420p", "-r", String(o.fps), "-movflags", "+faststart", "-an",
+    o.output,
+  ];
+}
+
+/** ffmpeg arguments that take an mp4-muted output to the job's video stream (re-encoded, captions burned, audio dropped). Pure. */
+export function commandMp4FfmpegArgs(o: { input: string; fps: number; frames: number; output: string; burn: string | null }): string[] {
+  return [
+    "-y", "-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-nostats",
+    "-i", o.input, "-frames:v", String(o.frames),
+    "-vf", [o.burn, "format=yuv420p"].filter(Boolean).join(","),
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-threads", "2", "-pix_fmt", "yuv420p", "-r", String(o.fps), "-movflags", "+faststart", "-an",
+    o.output,
+  ];
+}
+
+/**
+ * Runs a command pack's render for one job and leaves the muted video at `output`. Used by render-video and by the CLI
+ * (render-command) that venstudio-styles CI runs. Network: inside a network namespace where this machine allows it
+ * unprivileged; otherwise every proxy variable points at a loopback listener that refuses and records the request,
+ * and any recorded request fails the job.
+ */
+export async function runCommandRender(o: {
+  prepared: CommandPrepared;
+  spec: RenderSpec;
+  workDir: string;
+  inDir: string;
+  props: ReturnType<typeof buildCommandProps>;
+  output: string;
+  burn: string | null;
+  signal: AbortSignal;
+  onProgress?: (f: number) => void;
+  log?: (line: string) => void;
+}): Promise<{ frames: number; isolation: "net-namespace" | "proxy-blackhole"; seconds: number }> {
+  const t0 = Date.now();
+  const { pack, render, envDir } = o.prepared;
+  const venv = pack.recipe.steps.find((s) => s.kind === "pip")?.to ?? null;
+  const run = path.join(o.workDir, "command");
+  const home = path.join(run, "home");
+  const tmp = path.join(run, "tmp");
+  const framesDir = path.join(run, "frames");
+  await mkdir(home, { recursive: true });
+  await mkdir(tmp, { recursive: true });
+  const propsFile = path.join(run, "props.json");
+  await writeFile(propsFile, JSON.stringify(o.props));
+  const raw = path.join(run, "out.mp4");
+  const out = render.output === "png-frames" ? framesDir : raw;
+  if (render.output === "png-frames") await mkdir(framesDir, { recursive: true });
+  const values: Record<string, string> = {
+    props: propsFile,
+    out,
+    width: String(o.spec.width),
+    height: String(o.spec.height),
+    fps: String(o.spec.fps),
+    frames: String(o.props.totalFrames),
+    packDir: pack.dir,
+    envDir,
+    inDir: o.inDir,
+    workDir: run,
+  };
+  const argv = substituteArgv(render.argv, values);
+  argv[0] = resolveProgram(render.argv[0], { envDir, venv });
+  const prefix = await netIsolationPrefix();
+  const hole = prefix ? null : await startBlackholeProxy();
+  const logFile = path.join(o.workDir, "command.log");
+  let got: CommandRun;
+  try {
+    got = await runFixed(argv, {
+      cwd: run,
+      env: commandEnv({ recipe: pack.recipe, envDir, home, tmp, proxy: hole?.url ?? null }),
+      timeoutMs: commandTimeoutMs(render, o.spec.durationSec),
+      signal: o.signal,
+      prefix: prefix ?? [],
+      onLine: (l) => {
+        o.log?.(l);
+        const m = /frame (\d+)\/(\d+)/.exec(l);
+        if (m) o.onProgress?.(Math.min(1, Number(m[1]) / Math.max(1, Number(m[2]))) * 0.8);
+      },
+    });
+  } finally {
+    await hole?.close();
+  }
+  await writeFile(logFile, got.output);
+  const attempts = hole?.attempts() ?? [];
+  if (o.signal.aborted) throw new Error("Aborted");
+  if (attempts.length > 0) throw new NonRetryableError(`${pack.id}@${pack.version} tried the network during the render (${attempts.slice(0, 3).join("; ")}); renders run offline. Nothing was published.`);
+  if (got.timedOut) throw new NonRetryableError(`${pack.id}@${pack.version}: the render took longer than ${Math.round(commandTimeoutMs(render, o.spec.durationSec) / 1000)} s and was stopped. Last output: ${got.output.trim().slice(-400)}`);
+  if (got.code !== 0) throw new NonRetryableError(`${pack.id}@${pack.version}: the render exited with ${got.code ?? got.signal}. Last output: ${got.output.trim().slice(-600)}`);
+  const frames = o.props.totalFrames;
+  if (render.output === "png-frames") {
+    await checkCommandFrames(framesDir, { frames, width: o.spec.width, height: o.spec.height });
+    await runFfmpeg(commandFramesFfmpegArgs({ dir: framesDir, fps: o.spec.fps, frames, output: o.output, burn: o.burn }), o.spec.durationSec, (f) => o.onProgress?.(0.8 + f * 0.2), o.signal, o.workDir);
+  } else {
+    const st = await lstat(raw).catch(() => null);
+    if (!st?.isFile() || st.size === 0) throw new NonRetryableError(`${pack.id}@${pack.version}: the render wrote no video at {out}`);
+    const probe = parseProbe(JSON.parse((await runCapture(ffprobePath(), ["-v", "error", "-show_format", "-show_streams", "-of", "json", raw], o.signal)).stdout) as unknown);
+    if (probe.width !== o.spec.width || probe.height !== o.spec.height) throw new NonRetryableError(`${pack.id}@${pack.version}: the render is ${probe.width}x${probe.height}, the job is ${o.spec.width}x${o.spec.height}`);
+    await runFfmpeg(commandMp4FfmpegArgs({ input: raw, fps: o.spec.fps, frames, output: o.output, burn: o.burn }), o.spec.durationSec, (f) => o.onProgress?.(0.8 + f * 0.2), o.signal, o.workDir);
+  }
+  await rm(run, { recursive: true, force: true });
+  return { frames, isolation: prefix ? "net-namespace" : "proxy-blackhole", seconds: Math.round((Date.now() - t0) / 100) / 10 };
+}
+
+const commandRenderer: RendererPlugin = {
+  id: "command",
+  capability: "command",
+  audio: "shared-mux",
+  mutedFile: "command.part.mp4",
+  captions: (_spec, prepared) => ((prepared as CommandPrepared).render.captions === "renderer" ? "renderer" : "shared-burn"),
+  unavailable: async () => (hasCommand(process.env.FFMPEG_PATH ?? "ffmpeg") ? null : "ffmpeg is not installed (it encodes and finishes every command render)"),
+  prepare: async (spec, home) => commandPackFor(spec, home ?? defaultHome()),
+  async render(r) {
+    const prepared = r.prepared as CommandPrepared;
+    const drawsCaptions = prepared.render.captions === "renderer";
+    const props = buildCommandProps(r.spec, {
+      images: r.spec.shots.map((s) => path.basename(r.named.get(s.assetId) as string)),
+      font: r.spec.fontAssetId ? path.basename(r.named.get(r.spec.fontAssetId) as string) : null,
+      drawsCaptions,
+    });
+    r.ctx.progress(0.15, `Rendering ${prepared.pack.id} with ${envCapability(prepared.pack.recipe)}`);
+    const got = await runCommandRender({
+      prepared,
+      spec: r.spec,
+      workDir: r.ctx.workDir,
+      inDir: path.join(r.ctx.workDir, "in"),
+      props,
+      output: path.join(r.ctx.workDir, r.output),
+      burn: r.burn?.filter ?? null,
+      signal: r.ctx.signal,
+      onProgress: (f) => r.ctx.progress(0.15 + f * 0.65, `Rendering ${Math.round(f * 100)}%`),
+    });
+    const drawn = drawsCaptions && r.spec.captions.length > 0;
+    return {
+      captionsBurned: drawn,
+      captionNote: null,
+      extra: {
+        commandPack: { id: prepared.pack.id, version: prepared.pack.version },
+        environment: { id: prepared.pack.recipe.id, version: prepared.pack.recipe.version, licences: prepared.pack.recipe.licences },
+        template: prepared.pack.id,
+        frames: got.frames,
+        network: got.isolation,
+      },
+    };
+  },
+};
+
+/** Fixture render for CI and pack authors (render-command): the same code path as render-video, without a portal. */
+export async function renderCommandFixture(o: { pack: string; out: string; payload?: string; envs: string; font?: string }): Promise<Record<string, unknown>> {
+  const packDir = path.resolve(o.pack);
+  const style = JSON.parse(await readFile(path.join(packDir, "style.json"), "utf8")) as { id?: string; version?: string; renderer?: { engine?: string }; environment?: unknown };
+  if (style.renderer?.engine !== "command") throw new Error(`${o.pack} is not an engine command pack`);
+  const recipe = parseEnvironment(style.environment);
+  if (!recipe.render) throw new Error(`${o.pack} has no environment.render`);
+  const envDir = path.join(path.resolve(o.envs), envKey(recipe));
+  if (!existsSync(path.join(envDir, ENV_MANIFEST))) throw new Error(`${envCapability(recipe)} is not installed under ${o.envs}; run env-install first`);
+  const raw = JSON.parse(await readFile(o.payload ?? path.join(packDir, "fixtures", "payload.json"), "utf8")) as Record<string, unknown>;
+  const spec = parseRenderSpec(withPlaceholderUuids(raw));
+  const work = await mkdtemp(path.join(os.tmpdir(), "vs-render-command-"));
+  try {
+    const inDir = path.join(work, "in");
+    await mkdir(inDir, { recursive: true });
+    const colours = ["0x1d3557", "0x2a9d8f", "0x264653", "0x457b9d", "0x6d597a"];
+    for (const [i, s] of spec.shots.entries()) {
+      await runCapture(ffmpegPath(), ["-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", `color=c=${colours[i % colours.length]}:s=${spec.width}x${spec.height}`, "-frames:v", "1", path.join(inDir, `${s.assetId}.png`)], AbortSignal.timeout(60_000));
+    }
+    let font: string | undefined;
+    if (o.font && spec.fontAssetId) {
+      font = path.join("in", `${spec.fontAssetId}.ttf`);
+      await copyFile(o.font, path.join(work, font));
+    }
+    const prepared: CommandPrepared = { pack: { id: String(style.id), version: String(style.version), engine: "command", dir: packDir, recipe }, render: recipe.render, envDir };
+    const burn = recipe.render.captions === "worker" ? sharedCaptionBurn(spec, font, { drawtext: ffmpegHasFilter("drawtext") }) : null;
+    for (const f of burn?.files ?? []) await writeFile(path.join(work, f.file), f.text, "utf8");
+    const props = buildCommandProps(spec, { images: spec.shots.map((s) => `${s.assetId}.png`), font: font ? path.basename(font) : null, drawsCaptions: recipe.render.captions === "renderer" });
+    const got = await runCommandRender({ prepared, spec, workDir: work, inDir, props, output: path.resolve(o.out), burn: burn?.filter ?? null, signal: AbortSignal.timeout(commandTimeoutMs(recipe.render, spec.durationSec) + 120_000), log: (l) => log(`render: ${l}`) });
+    return { pack: `${style.id}@${style.version}`, environment: envCapability(recipe), width: spec.width, height: spec.height, fps: spec.fps, durationSec: spec.durationSec, captionsBurned: burn?.captionsBurned ?? false, ...got };
+  } finally {
+    await rm(work, { recursive: true, force: true });
+  }
+}
+
+/** CI and pack authors (env-install): installs a pack's environment from its directory with the worker's installer. */
+export async function envInstallCli(o: { pack: string; envs: string; cache?: string }): Promise<Record<string, unknown>> {
+  const packDir = path.resolve(o.pack);
+  const style = JSON.parse(await readFile(path.join(packDir, "style.json"), "utf8")) as { environment?: unknown };
+  const recipe = parseEnvironment(style.environment);
+  const r = await installEnvironment({ recipe, packDir, root: path.resolve(o.envs), cacheDir: o.cache ? path.resolve(o.cache) : null, signal: AbortSignal.timeout(60 * 60_000), log: (m) => log(`env-install: ${m}`) });
+  if (!r.ok) throw new Error(`env-install ${envCapability(recipe)} failed: ${r.reason}`);
+  return { environment: envCapability(recipe), envDir: r.envDir, probe: r.probe, network: (await netIsolationPrefix()) ? "net-namespace" : "proxy-blackhole" };
+}
+
 /** Every renderer plugin of this worker, by engine id. Same keys as RENDER_ENGINES (a test checks). */
 export const RENDERERS: Readonly<Record<string, RendererPlugin>> = {
   [stillsRenderer.id]: stillsRenderer,
   [remotionRenderer.id]: remotionRenderer,
   [htmlCaptureRenderer.id]: htmlCaptureRenderer,
+  [commandRenderer.id]: commandRenderer,
 };
 
 /** The plugin for an engine; throws NonRetryableError naming an engine this worker has none for. */
@@ -4520,7 +6192,8 @@ export const UPDATE_WORKER_FILE = "venstudio-worker.ts";
 export const UPDATE_BUNDLE_FILE = "render-remotion.json";
 /** The style packs index (0.9.0+): apps/portal/lib/style-packs-index.ts. Installed to <home>/styles/style-packs.json. */
 export const UPDATE_PACKS_FILE = "style-packs.json";
-const UPDATE_FILES: readonly string[] = [UPDATE_WORKER_FILE, UPDATE_BUNDLE_FILE, UPDATE_PACKS_FILE];
+/** Packs with an environment and their files (0.12.0+): apps/portal/lib/env-packs.ts. Installed to <home>/packs/. */
+const UPDATE_FILES: readonly string[] = [UPDATE_WORKER_FILE, UPDATE_BUNDLE_FILE, UPDATE_PACKS_FILE, "env-packs.json"];
 /** Prefix of the signed bytes. Same as MANIFEST_CONTEXT in apps/portal/lib/update-manifest.ts. */
 export const MANIFEST_CONTEXT = "venstudio-update-manifest-v1\n";
 /** Clock difference tolerated between the portal and this machine. */
@@ -4653,6 +6326,8 @@ export interface UpdatePlan {
   bundle: UpdateManifestFile | null;
   /** The style packs index to install (only when the worker file is current). */
   packs: UpdateManifestFile | null;
+  /** The packs with an environment, with their files (0.12.0+; only when the worker file is current). */
+  envPacks?: UpdateManifestFile | null;
   /** Why (part of) the manifest is refused; reported to the portal. */
   refused: string | null;
   /** Something skipped on purpose (a release that failed here before); logged, not reported again. */
@@ -4662,9 +6337,9 @@ export interface UpdatePlan {
 /** What to do with a verified manifest. Never installs an older worker unless the owner pinned exactly that version. */
 export function planUpdate(
   m: Pick<UpdateManifest, "version" | "pin" | "files">,
-  local: { version: string; workerSha: string; bundleSha: string | null; packsSha?: string | null; failed: Readonly<Record<string, string>> },
+  local: { version: string; workerSha: string; bundleSha: string | null; packsSha?: string | null; envPacksSha?: string | null; failed: Readonly<Record<string, string>> },
 ): UpdatePlan {
-  const plan: UpdatePlan = { worker: null, bundle: null, packs: null, refused: null, notice: null };
+  const plan: UpdatePlan = { worker: null, bundle: null, packs: null, envPacks: null, refused: null, notice: null };
   const cmp = compareVersions(m.version, local.version);
   if (Number.isNaN(cmp)) return { ...plan, refused: `unreadable version ${m.version}` };
   if (cmp < 0 && !m.pin) {
@@ -4689,11 +6364,17 @@ export function planUpdate(
  * The packs index is data, not code: installed whenever it differs, once no worker file is about to replace this one
  * (a new worker version may read a newer index format).
  */
-function withPacks(plan: UpdatePlan, m: Pick<UpdateManifest, "files">, local: { packsSha?: string | null; failed: Readonly<Record<string, string>> }): UpdatePlan {
+function withPacks(plan: UpdatePlan, m: Pick<UpdateManifest, "files">, local: { packsSha?: string | null; envPacksSha?: string | null; failed: Readonly<Record<string, string>> }): UpdatePlan {
   const pf = m.files.find((f) => f.name === UPDATE_PACKS_FILE) ?? null;
   if (!plan.worker && pf && pf.sha256 !== (local.packsSha ?? null)) {
     if (local.failed[pf.sha256]) plan.notice = plan.notice ?? `skipping the style packs ${pf.sha256.slice(0, 12)}: they failed here before`;
     else plan.packs = pf;
+  }
+  // The packs with an environment are data too: their recipes install later, between jobs, and only after a probe.
+  const ef = m.files.find((f) => (f.name as string) === UPDATE_ENV_PACKS_FILE) ?? null;
+  if (!plan.worker && ef && ef.sha256 !== (local.envPacksSha ?? null)) {
+    if (local.failed[ef.sha256]) plan.notice = plan.notice ?? `skipping the env packs ${ef.sha256.slice(0, 12)}: they failed here before`;
+    else plan.envPacks = ef;
   }
   return plan;
 }
@@ -4715,6 +6396,8 @@ export interface PacksIndexEntry {
   minWorkerVersion: string;
   composition: string | null;
   sha256: string;
+  /** The environment the pack needs (`<id>@<version>`, 0.12.0+), or null. Older workers ignore the field. */
+  environment?: string | null;
 }
 
 export interface PacksIndex {
@@ -4746,7 +6429,8 @@ export function parsePacksIndex(raw: unknown): PacksIndex {
     if (typeof p.minWorkerVersion !== "string" || Number.isNaN(compareVersions(p.minWorkerVersion, "0"))) return bad(`${id} has no valid minWorkerVersion`);
     if (p.composition !== null && (typeof p.composition !== "string" || !/^[a-z0-9][a-z0-9-]{1,62}$/.test(p.composition))) return bad(`${id} has no valid composition`);
     if (typeof p.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(p.sha256)) return bad(`${id} has no valid sha256`);
-    return { id, version: p.version, status: typeof p.status === "string" ? p.status.slice(0, 20) : "", engine: p.engine, minWorkerVersion: p.minWorkerVersion, composition: p.composition, sha256: p.sha256 };
+    if (p.environment !== undefined && p.environment !== null && (typeof p.environment !== "string" || !/^[a-z0-9][a-z0-9-]{1,62}@\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(p.environment))) return bad(`${id} has no valid environment`);
+    return { id, version: p.version, status: typeof p.status === "string" ? p.status.slice(0, 20) : "", engine: p.engine, minWorkerVersion: p.minWorkerVersion, composition: p.composition, sha256: p.sha256, environment: typeof p.environment === "string" ? p.environment : null };
   });
   return { format: PACKS_INDEX_FORMAT, commit: typeof raw.commit === "string" ? raw.commit.slice(0, 64) : null, packs };
 }
@@ -4787,11 +6471,15 @@ export function packCapabilitiesFor(
   probed: readonly ProbedPack[],
   version: string = VERSION,
   html: readonly HtmlPackRef[] = [],
+  envReady: readonly string[] = [],
 ): string[] {
   if (!index) return [];
   const out: string[] = [];
   for (const p of index.packs) {
     if (!(compareVersions(p.minWorkerVersion, version) <= 0)) continue;
+    // A pack with an environment (0.12.0+) also needs that exact pack installed from env-packs.json and its
+    // environment's probe passed here (envReady lists <pack id>@<pack version>).
+    if ((p.environment || p.engine === "command") && !envReady.includes(`${p.id}@${p.version}`)) continue;
     // An html-capture pack (0.10.0+) needs the html-capture probe to have passed and that exact pack version installed
     // in the Remotion project's html/ folder with files matching its digest (installedHtmlPacks).
     const ok =
@@ -4801,7 +6489,9 @@ export function packCapabilitiesFor(
           ? caps.includes("remotion-2d") && probed.some((r) => r.id === p.id && r.version === p.version && r.composition === p.composition)
           : p.engine === "html-capture"
             ? caps.includes("html-capture") && html.some((h) => h.id === p.id && h.version === p.version)
-            : false;
+            : p.engine === "command"
+              ? caps.includes("command")
+              : false;
     if (ok) out.push(`pack:${p.id}@${p.version}`);
   }
   return out;
@@ -5149,18 +6839,19 @@ export type UpdateCheckOutcome = { restart: boolean; bundle?: { file: UpdateMani
  * One update check, between jobs. Returns restart: true once a verified, self-tested new worker file is in place.
  * Verification failures are reported to the portal; network trouble is only logged and tried again later.
  */
-export async function checkForUpdate(client: PortalClient, cfg: WorkerConfig, home: string): Promise<UpdateCheckOutcome> {
+export async function checkForUpdate(client: PortalClient, cfg: WorkerConfig, home: string, hooks: { beforeEnvPacks?: () => Promise<void> } = {}): Promise<UpdateCheckOutcome> {
   const p = updatePaths(home);
   const key = cfg.updateKey as string;
   const ownSha = await sha256File(p.live);
   const bundleSha = await installedBundleSha(home);
   const packsSha = await installedPacksSha(home);
+  const envPacksSha = await installedEnvPacksSha(home);
   let res: UpdateCheckResponse | null;
   try {
     res = await client.json<UpdateCheckResponse>(
       "POST",
       "/api/worker/update",
-      { version: VERSION, files: { [UPDATE_WORKER_FILE]: ownSha, [UPDATE_BUNDLE_FILE]: bundleSha, [UPDATE_PACKS_FILE]: packsSha }, keyId: updateKeyId(key) },
+      { version: VERSION, files: { [UPDATE_WORKER_FILE]: ownSha, [UPDATE_BUNDLE_FILE]: bundleSha, [UPDATE_PACKS_FILE]: packsSha, [UPDATE_ENV_PACKS_FILE]: envPacksSha }, keyId: updateKeyId(key) },
       2,
     );
   } catch (err) {
@@ -5179,7 +6870,7 @@ export async function checkForUpdate(client: PortalClient, cfg: WorkerConfig, ho
   }
   const m = check.manifest;
   state.lastIssuedAt = m.issuedAt;
-  const plan = planUpdate(m, { version: VERSION, workerSha: ownSha, bundleSha, packsSha, failed: state.failed ?? {} });
+  const plan = planUpdate(m, { version: VERSION, workerSha: ownSha, bundleSha, packsSha, envPacksSha, failed: state.failed ?? {} });
   const said = plan.refused ?? plan.notice;
   const fresh = said !== null && state.lastNotice !== `${m.release}: ${said}`;
   if (said !== null) state.lastNotice = `${m.release}: ${said}`;
@@ -5238,6 +6929,29 @@ export async function checkForUpdate(client: PortalClient, cfg: WorkerConfig, ho
       }
       log(`style packs refused: ${why}`);
       await reportUpdate(client, { status: "refused", version: m.version, detail: `style packs: ${why}` });
+    }
+  }
+  if (plan.envPacks) {
+    const file = plan.envPacks;
+    try {
+      const body = await client.installFile(file.name, file.bytes);
+      verifyUpdateBytes(file, body);
+      await hooks.beforeEnvPacks?.();
+      const bundle = await installEnvPacks(home, body);
+      packsInstalled = true;
+      const list = bundle.packs.map((p) => `${p.id}@${p.version}`).join(", ") || "none";
+      log(`env packs ${file.sha256.slice(0, 12)}: signature and checksum verified; installed ${list} (their environments install between jobs)`);
+      await reportUpdate(client, { status: "ok", version: VERSION, detail: `env packs ${file.sha256.slice(0, 12)} installed: ${list}`.slice(0, 500) });
+    } catch (err) {
+      const why = (err as Error).message;
+      if (!(err instanceof UpdateRefused)) {
+        if (!why.startsWith("env packs") && !why.startsWith("environment") && !(err instanceof SyntaxError)) throw err;
+        const latest = await readUpdateState(home);
+        latest.failed = { ...latest.failed, [file.sha256]: why };
+        await writeUpdateState(home, latest);
+      }
+      log(`env packs refused: ${why}`);
+      await reportUpdate(client, { status: "refused", version: m.version, detail: `env packs: ${why}` });
     }
   }
   if (plan.bundle) {
@@ -5485,6 +7199,17 @@ export async function loop(opts: {
   const deadline = Date.now() + opts.maxMinutes * 60_000;
   let restart = false;
   let bundleTask: BundleTask | null = null;
+  let envTask: EnvTask | null = null;
+  let environments: EnvReport[] = [];
+  const refreshEnvironments = async () => {
+    try {
+      const { packs } = await installedEnvPacks(opts.home);
+      const state = await readEnvState(opts.home);
+      environments = envReports(neededEnvironments(packs), state, envPlatform(), await readyEnvironments(opts.home, packs, state));
+    } catch (err) {
+      log(`environments: ${(err as Error).message}`);
+    }
+  };
   const timeLeft = () => deadline - Date.now();
   let stopping = false;
   const stop = () => {
@@ -5495,6 +7220,7 @@ export async function loop(opts: {
 
   try {
     let capabilities = await detectCapabilities(opts.home);
+    await refreshEnvironments();
     const budget = opts.mode === "daemon" ? "" : `, budget ${opts.maxMinutes} min`;
     log(`${cfg.name} v${VERSION} ${opts.mode} mode${budget}, capabilities: ${capabilities.join(", ")}`);
 
@@ -5529,17 +7255,45 @@ export async function loop(opts: {
       if (Date.now() >= nextUpdateCheck) {
         nextUpdateCheck = Date.now() + checkEveryMs;
         try {
-          const outcome = await checkForUpdate(client, cfg, opts.home);
+          const outcome = await checkForUpdate(client, cfg, opts.home, {
+            // A new env-packs.json may replace the pack an install reads: that install stops first and starts again.
+            beforeEnvPacks: async () => {
+              if (envTask && !envTask.result) {
+                log(`environment ${envKey(envTask.recipe)}: stopped for the new env packs; it starts again`);
+                await abandonEnvTask(envTask, opts.home);
+                envTask = null;
+              }
+            },
+          });
           if (outcome.restart) {
             restart = true;
             break;
           }
           if (outcome.bundle && !bundleTask) bundleTask = startBundleTask(opts.home, outcome.bundle.file, outcome.bundle.body);
           // New packs: report them on the next claim (each only once its probe passes here).
-          if (outcome.packsInstalled) capabilities = await detectCapabilities(opts.home);
+          if (outcome.packsInstalled) {
+            capabilities = await detectCapabilities(opts.home);
+            await refreshEnvironments();
+          }
         } catch (err) {
           log(`update check failed (will try again later): ${(err as Error).message}`);
         }
+      }
+      // Between jobs: record a finished environment install (env:<id>@<version> is reported only once its probe
+      // passed), then start the next one that is due. Installs run in the background and never block a job.
+      if (envTask?.result) {
+        const task: EnvTask = envTask;
+        envTask = null;
+        await finishEnvTask(task, opts.home).catch((err) => log(`environment ${envKey(task.recipe)}: ${(err as Error).message}`));
+        capabilities = await detectCapabilities(opts.home);
+        await refreshEnvironments();
+      }
+      if (!envTask && !stopping) {
+        envTask = await startEnvTask(opts.home).catch((err) => {
+          log(`environments: ${(err as Error).message}`);
+          return null;
+        });
+        if (envTask) await refreshEnvironments();
       }
       // Never hold a claim open past the budget.
       const maxWait = opts.claimWaitSeconds ?? CLAIM_WAIT_SECONDS;
@@ -5553,6 +7307,7 @@ export async function loop(opts: {
           mode: opts.mode,
           version: VERSION,
           waitSeconds,
+          ...(environments.length > 0 ? { environments } : {}),
         });
       } catch (err) {
         if (err instanceof HttpError && err.status === 401) throw new Error("Portal rejected the worker token (revoked?). Enroll again.");
@@ -5576,6 +7331,25 @@ export async function loop(opts: {
       }
       if (!res) {
         if (opts.mode === "tick") {
+          // A one-shot tick finishes a running environment install and reports it before it exits, within its time
+          // budget and unless it is told to stop; otherwise the install stops and starts again on the next run.
+          if (envTask && !envTask.result && !stopping && timeLeft() > 0) {
+            const task: EnvTask = envTask;
+            await new Promise<void>((resolve) => {
+              const timer = setInterval(() => {
+                if (stopping || timeLeft() <= 0) {
+                  clearInterval(timer);
+                  resolve();
+                }
+              }, 1000);
+              void task.promise.then(() => {
+                clearInterval(timer);
+                resolve();
+              });
+            });
+            if (task.result) continue;
+            log(`environment ${envKey(task.recipe)} is still installing at the end of this tick; it starts again on the next run`);
+          }
           log(ran === 0 ? "queue empty" : `queue empty after ${ran} job(s)`);
           break;
         }
@@ -5595,6 +7369,14 @@ export async function loop(opts: {
       else await finishBundleTask(bundleTask, client, opts.home).catch((err) => log(`Remotion templates update: ${(err as Error).message}`));
     } else if (bundleTask?.result) {
       await finishBundleTask(bundleTask, client, opts.home).catch((err) => log(`Remotion templates update: ${(err as Error).message}`));
+    }
+    if (envTask) {
+      if (!envTask.result) {
+        // Stopped mid-install: the half-installed folder is removed and the install starts again on the next run.
+        await abandonEnvTask(envTask, opts.home).catch((err) => log(`environment: ${(err as Error).message}`));
+      } else {
+        await finishEnvTask(envTask, opts.home).catch((err) => log(`environment: ${(err as Error).message}`));
+      }
     }
     process.removeListener("SIGTERM", stop);
     process.removeListener("SIGINT", stop);
@@ -5666,6 +7448,8 @@ Usage:
   node venstudio-worker.ts unpack-bundle --file <bundle.json> --dir <dir>   (used by install.sh --with-remotion)
   node venstudio-worker.ts install-packs --file <style-packs.json>          (used by install.sh)
   node venstudio-worker.ts capture-html --pack <packs/<id>> --out <file.mp4> [--payload <json>] [--remotion <dir>] [--font <ttf>]   (CI, pack authors; an html-design pack's reference page renders as an uploaded page)
+  node venstudio-worker.ts env-install --pack <packs/<id>> [--envs <dir>] [--cache <dir>]   (CI, pack authors: install a pack's environment from its recipe and run its probe; never as root)
+  node venstudio-worker.ts render-command --pack <packs/<id>> --out <file.mp4> [--envs <dir>] [--payload <json>] [--font <ttf>]   (CI, pack authors: render an engine command fixture, muted)
 Env: VENSTUDIO_HOME, VENSTUDIO_CHROMIUM_PATH (html-capture; default: the Remotion project's Chrome Headless Shell), VENSTUDIO_AUTO_UPDATE=0 (no self-update), VENSTUDIO_UPDATE_CHECK_SECONDS, VENSTUDIO_REMOTION_DIR, VENSTUDIO_REMOTION_CONCURRENCY, FFMPEG_PATH, KOKORO_URL, VENSTUDIO_KOKORO_URL (enables tts), VENSTUDIO_AGENT_TASKS=1 (hold mode only, unverified), VENSTUDIO_EXTRA_CAPS, HTTPS_PROXY`;
 
 /**
@@ -5734,6 +7518,28 @@ export async function main(argv: string[]) {
       if (!flags.pack || !flags.out) throw new Error("capture-html needs --pack <packs/<id> dir> --out <file.mp4> [--payload <json>] [--remotion <dir>] [--font <ttf>]");
       const r = await captureHtmlFixture({ pack: flags.pack, out: flags.out, payload: flags.payload, remotion: flags.remotion ?? remotionDir(home), font: flags.font });
       console.log(JSON.stringify(r));
+      return;
+    }
+    case "env-install": {
+      // CI and pack authors: installs a pack's environment with the worker's own installer, then runs its probe.
+      if (!flags.pack) throw new Error("env-install needs --pack <packs/<id> dir> [--envs <dir>] [--cache <dir>]");
+      const r = await envInstallCli({ pack: flags.pack, envs: flags.envs ?? envsDir(home), cache: flags.cache });
+      console.log(JSON.stringify(r));
+      return;
+    }
+    case "render-command": {
+      // CI and pack authors: renders a command pack's fixture (muted, captions burned) exactly as render-video does.
+      if (!flags.pack || !flags.out) throw new Error("render-command needs --pack <packs/<id> dir> --out <file.mp4> [--envs <dir>] [--payload <json>] [--font <ttf>]");
+      const r = await renderCommandFixture({ pack: flags.pack, out: flags.out, payload: flags.payload, envs: flags.envs ?? envsDir(home), font: flags.font });
+      console.log(JSON.stringify(r));
+      return;
+    }
+    case "install-env-packs": {
+      // Manual installs and tests (install.sh leaves env packs to the first signed update check): the packs with an
+      // environment; their environments install on the next run, between jobs.
+      if (!flags.file) throw new Error("install-env-packs needs --file <env-packs.json>");
+      const b = await installEnvPacks(home, await readFile(flags.file));
+      log(`installed env packs: ${b.packs.map((p) => `${p.id}@${p.version}`).join(", ") || "none"} into ${envPacksDir(home)}`);
       return;
     }
     case "unpack-bundle": {

@@ -26,6 +26,8 @@ jobs:
           node runtime/html-capture/venstudio-worker.ts help > /dev/null
       - name: Validate every pack (style.json, README, provenance, fixtures, render projects)
         run: node tools/validate.mjs
+      - name: Validate every skill and kit (skills/README.md), and that every hermes pack's skill is here
+        run: node tools/skills.mjs
       - name: Validator unit tests
         run: node --test "tools/*.test.mjs"
 
@@ -97,4 +99,81 @@ jobs:
         with:
           name: remotion-clips
           path: .remotion-project/out
+          if-no-files-found: ignore
+
+  # Every pack with an environment, proven without Hermes: on this clean runner, as its non-root user, the vendored
+  # worker installs the recipe exactly as a Muse worker does (its own installer: pinned downloads, npm ci
+  # --ignore-scripts, pip --require-hashes), runs the probe, renders the fixture with the same command renderer, and
+  # tools/check-video.mjs checks it against fixtures/expect.json. A recipe that fails fails this job, with the reason in
+  # the log. Downloads are cached by sha256 (the installer re-checks every cached file's hash before using it).
+  environments:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      ENVS: ${{ github.workspace }}/.envs
+      ENV_CACHE: ${{ github.workspace }}/.env-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: The packs with an environment
+        id: packs
+        run: |
+          set -euo pipefail
+          ids=$(node -e 'const fs=require("fs");for(const d of fs.readdirSync("packs").sort()){const s=JSON.parse(fs.readFileSync(`packs/${d}/style.json`,"utf8"));if(s.environment)console.log(d)}' | tr '\n' ' ')
+          echo "ids=$ids" >> "$GITHUB_OUTPUT"
+          echo "packs with an environment: ${ids:-none}"
+      - name: Cache downloads by sha256
+        if: steps.packs.outputs.ids != ''
+        uses: actions/cache@v4
+        with:
+          path: .env-cache
+          key: envs-${{ hashFiles('packs/*/style.json', 'packs/*/env/**') }}
+          restore-keys: envs-
+      - name: ffmpeg and ffprobe (the worker's encode and check-video)
+        if: steps.packs.outputs.ids != ''
+        timeout-minutes: 8
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          echo 'path-exclude /usr/share/man/*' | sudo tee /etc/dpkg/dpkg.cfg.d/01_noman >/dev/null
+          sudo rm -f /var/lib/man-db/auto-update
+          if ! timeout 240 sh -c 'sudo apt-get install -y -qq --no-install-recommends ffmpeg'; then
+            curl -fsSL -o /tmp/ff.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+            mkdir -p /tmp/ff && tar -xJf /tmp/ff.tar.xz -C /tmp/ff --strip-components=1
+            sudo cp /tmp/ff/ffmpeg /tmp/ff/ffprobe /usr/local/bin/
+          fi
+          ffprobe -version | head -1
+      - name: Install each environment from its recipe with the vendored worker (non-root), then its probe
+        if: steps.packs.outputs.ids != ''
+        run: |
+          set -euo pipefail
+          [ "$(id -u)" != "0" ] || { echo "this step must run as a non-root user"; exit 1; }
+          for id in ${{ steps.packs.outputs.ids }}; do
+            echo "::group::env-install $id"
+            node runtime/html-capture/venstudio-worker.ts env-install --pack "packs/$id" --envs "$ENVS" --cache "$ENV_CACHE"
+            echo "::endgroup::"
+          done
+      - name: Render each fixture with the vendored worker's command renderer, then check size, fps, duration and frame count
+        if: steps.packs.outputs.ids != ''
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          font=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+          [ -f "$font" ] || font=$(fc-list : file | sed 's/: *$//' | grep -m1 '\.ttf$')
+          mkdir -p .env-out
+          for id in ${{ steps.packs.outputs.ids }}; do
+            engine=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).renderer.engine)' "packs/$id/style.json")
+            [ "$engine" = "command" ] || { echo "$id: $engine renders in its own job; its environment was installed and probed above"; continue; }
+            node runtime/html-capture/venstudio-worker.ts render-command --pack "packs/$id" --envs "$ENVS" --out ".env-out/$id.mp4" --font "$font"
+            node tools/check-video.mjs ".env-out/$id.mp4" "packs/$id/fixtures/expect.json"
+          done
+      - name: Upload the clips
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: environment-clips
+          path: .env-out
           if-no-files-found: ignore

@@ -1,0 +1,10 @@
+{
+  "name": "three-low-poly-env",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The npm half of the three-low-poly environment: three.js only, installed by the worker with npm ci --omit=dev --ignore-scripts.",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "three": "0.183.2"
+  }
+}

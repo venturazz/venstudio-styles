@@ -8,12 +8,16 @@ at runtime and needs no GitHub token. Plan: venstudio `docs/plans/style-system.m
 | Path | What |
 | --- | --- |
 | `packs/<id>/` | One style pack: `style.json`, `README.md`, `fixtures/`, and `render/` when the engine has a render project. |
+| `skills/curated/<id>/`, `skills/candidate/<id>/` | The agent skills the styles are made with: curated (approved by the owner or Hermes) and not yet curated. Each holds `skill.json` and the skill's files. See `skills/README.md`. |
+| `skills/kits/<id>/` | Shared files several skills use (claude-animation-skills' `kit/`). |
+| `tools/skills.mjs` | Validates `skills/` and its links to the packs. |
 | `FORMAT.md` | The pack format, version 1. |
 | `schema/style.schema.json` | JSON Schema of `style.json`, for editors. |
 | `tools/validate.mjs` | The validator (zero dependencies). Vendored into venstudio; edit it only here. |
 | `tools/assemble-remotion.mjs` | Builds a Remotion project from the runtime and the Remotion packs, as workers get it. |
 | `runtime/remotion/` | Copy of venstudio's Remotion runtime (`apps/render-remotion`), so CI can render the compositions here. |
 | `CONTRIBUTING.md` | The lifecycle, who may change status, and how a change reaches the studio. |
+| `docs/skills-triage.md` | Which Hermes video skills can reach a worker, what each should become, and in which order. |
 
 ## Packs
 
@@ -26,6 +30,8 @@ at runtime and needs no GitHub token. Plan: venstudio `docs/plans/style-system.m
 | `ambient-loop` | ffmpeg-stills | trial |
 | `travel-documentary` | ffmpeg-stills | trial |
 | `story-read-aloud` | ffmpeg-stills | trial |
+| `dafiology-fullframe` | command (Pillow frames, one plate a scene) | lab |
+| `three-low-poly` | command (three.js + resvg, CPU projection) | draft |
 | `hermes-research-explainer` | hermes (research only) | trial |
 | `probe-line-graph` | html-capture | lab |
 | `animated-line-graph` | html-capture, adapted from claude-animation-skills `graph` (MIT) | trial |
@@ -53,6 +59,7 @@ yet; the portal lists them as Planned.
 
 ```
 node tools/validate.mjs
+node tools/skills.mjs
 node --test "tools/*.test.mjs"   # includes html-pages.test.mjs: every html-capture page run in a stand-in DOM
 ```
 
