@@ -31,7 +31,7 @@ HOOK = (255, 226, 61)
 DANGER = (255, 78, 60)
 WARN = (255, 226, 61)
 GOOD = (110, 240, 130)
-FONT_FILE = "dejavu-fonts-ttf-2.37/ttf/DejaVuSans-Bold.ttf"
+FONT_FILE = "fonts/dejavu-fonts-ttf-2.37/ttf/DejaVuSans-Bold.ttf"
 
 
 def arg(name, default=None):

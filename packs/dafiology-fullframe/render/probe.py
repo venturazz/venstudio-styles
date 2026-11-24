@@ -11,7 +11,7 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont, __version__ as pillow_version
 
-FONT_FILE = "dejavu-fonts-ttf-2.37/ttf/DejaVuSans-Bold.ttf"
+FONT_FILE = "fonts/dejavu-fonts-ttf-2.37/ttf/DejaVuSans-Bold.ttf"
 
 
 def arg(name):
