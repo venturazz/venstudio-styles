@@ -1,0 +1,122 @@
+{
+  "format": 1,
+  "id": "research-render",
+  "name": "Research Render",
+  "description": "Hermes renders the whole video with its own tools from a skill brief it writes from the approved script. For trials and research, never for publishing.",
+  "version": "0.2.0",
+  "status": "retired",
+  "family": "explainer",
+  "formats": {
+    "supported": [
+      "short"
+    ],
+    "naturalFrame": "portrait"
+  },
+  "renderer": {
+    "engine": "hermes",
+    "minWorkerVersion": "0.10.0",
+    "composition": null
+  },
+  "contract": {
+    "pacing": {
+      "shotSeconds": [
+        2,
+        4
+      ],
+      "hookWithinMs": 3000,
+      "cutsPerMinute": [
+        15,
+        30
+      ],
+      "transitionSec": 0.5
+    },
+    "onScreen": {
+      "elements": [
+        "plate",
+        "heading",
+        "callout"
+      ],
+      "motionTokens": [],
+      "elementAnimation": true
+    },
+    "captions": {
+      "required": true,
+      "spec": "caption-spec-v1",
+      "safeAreaPct": 8
+    },
+    "audio": {
+      "narrated": true,
+      "targetLufs": -14,
+      "maxTruePeakDb": -1,
+      "musicPolicy": "self-or-licensed"
+    },
+    "assets": {
+      "model": "image-per-shot",
+      "kinds": [
+        "image"
+      ],
+      "allowedSources": [
+        "upload",
+        "hermes",
+        "muse",
+        "worker",
+        "licensed",
+        "generated"
+      ],
+      "forbidKinds": [
+        "reference-video"
+      ]
+    }
+  },
+  "portal": {
+    "beatShape": "ending-cta",
+    "qc": {
+      "minPresentationScore": 75,
+      "gates": [
+        "G-technical",
+        "G-presentation",
+        "G-assets",
+        "G-compliance",
+        "G-claims"
+      ]
+    },
+    "themes": [],
+    "keywords": [
+      "hermes render research",
+      "hermes research render",
+      "research render trial"
+    ],
+    "cautions": [
+      "Research only: a Hermes render is never published.",
+      "Hermes's tools have their own terms; record what it used."
+    ],
+    "sources": []
+  },
+  "fixture": {
+    "payload": "fixtures/payload.json",
+    "expect": "fixtures/expect.json"
+  },
+  "provenance": [
+    {
+      "type": "owner-note",
+      "ref": "venturazz/venstudio docs/plans/style-system.md (renderer hermes: research and trials only)",
+      "licence": "owner",
+      "notes": "Owner decision: Hermes may render videos with its own tools (CapCut workflow, video_gen) for research and trials only, never for published videos."
+    }
+  ],
+  "curation": [
+    {
+      "date": "2026-11-22",
+      "kind": "research-source",
+      "ref": "venturazz/venstudio docs/plans/style-system.md, section 3 (renderer hermes) and Phase 2 (lib/studio/hermes-render.ts)",
+      "result": "pass",
+      "notes": "The source of this pack is Hermes's own render tools (its CapCut workflow, video_gen), put at trial by owner decision in Phase 2 for research only. Recorded when the research-source rule was introduced. No CI renders it (there is no Hermes in CI) and no real Hermes render has been curated yet; the portal records every run of it as a trial."
+    }
+  ],
+  "workflow": {
+    "recipe": "hermes-skill",
+    "review": [
+      "skill-brief"
+    ]
+  }
+}

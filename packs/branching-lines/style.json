@@ -1,0 +1,148 @@
+{
+  "format": 1,
+  "id": "branching-lines",
+  "name": "Dan Koe",
+  "description": "One white dot on pure black grows into a hairline tree that splits at every step; the tips light up and one quiet lowercase line swaps to a second. Hermes renders it with /dan-koe.",
+  "version": "0.2.0",
+  "status": "trial",
+  "family": "motion-graphics",
+  "formats": {
+    "supported": [
+      "short"
+    ],
+    "naturalFrame": "portrait"
+  },
+  "renderer": {
+    "engine": "hermes",
+    "minWorkerVersion": "0.10.0",
+    "composition": null
+  },
+  "contract": {
+    "pacing": {
+      "shotSeconds": [
+        3,
+        6
+      ],
+      "hookWithinMs": 1000,
+      "cutsPerMinute": [
+        10,
+        20
+      ],
+      "transitionSec": 0
+    },
+    "onScreen": {
+      "elements": [
+        "diagram",
+        "particles"
+      ],
+      "motionTokens": [
+        "draw",
+        "particles"
+      ],
+      "elementAnimation": true
+    },
+    "captions": {
+      "required": true,
+      "spec": "caption-spec-v1",
+      "safeAreaPct": 8
+    },
+    "audio": {
+      "narrated": true,
+      "targetLufs": -14,
+      "maxTruePeakDb": -1,
+      "musicPolicy": "none"
+    },
+    "assets": {
+      "model": "plates-and-diagrams",
+      "kinds": [
+        "image"
+      ],
+      "allowedSources": [
+        "upload",
+        "hermes",
+        "muse",
+        "worker",
+        "licensed",
+        "generated"
+      ],
+      "forbidKinds": [
+        "reference-video"
+      ]
+    }
+  },
+  "portal": {
+    "beatShape": "single",
+    "qc": {
+      "minPresentationScore": 75,
+      "gates": [
+        "G-technical",
+        "G-presentation",
+        "G-assets",
+        "G-compliance",
+        "G-claims"
+      ]
+    },
+    "themes": [
+      "motivation",
+      "education"
+    ],
+    "keywords": [
+      "choices",
+      "compounding",
+      "habits",
+      "line art",
+      "one dot",
+      "branching"
+    ],
+    "cautions": [
+      "Research only: a Hermes render is never published.",
+      "Hermes renders with the claude-animation-skills skill installed there; record what it used.",
+      "Quiet and plain: lowercase, no emojis, no bold, no exclamation marks.",
+      "The idea is one thing turning into many (choices, habits, compounding).",
+      "Pure black, hairline white strokes, solid white dots, one line of text. Not affiliated with Dan Koe."
+    ],
+    "sources": [
+      "https://github.com/artemnovitckii/claude-animation-skills/tree/86f70106c9aeae1334184467da5776c533ada3bc/skills/dan-koe"
+    ]
+  },
+  "fixture": {
+    "payload": "fixtures/payload.json",
+    "expect": "fixtures/expect.json"
+  },
+  "provenance": [
+    {
+      "type": "skill",
+      "ref": "https://github.com/artemnovitckii/claude-animation-skills@86f70106c9aeae1334184467da5776c533ada3bc (skills/dan-koe/SKILL.md), installed in Hermes as /dan-koe",
+      "licence": "MIT, Copyright (c) 2026 Artem Novitckii (the repository's LICENSE); its fonts (Inter, Inter Tight, Poppins, JetBrains Mono, Montserrat, Lora) under the SIL Open Font License 1.1",
+      "notes": "Learned from the skill's SKILL.md: what it makes, its pacing, on-screen elements, taste rules, formats (1080x1920, 30 fps) and natural frame (portrait). Hermes renders with the skill itself; this pack holds no code, frames or audio from the repository, only the contract and the mapping from the studio's plan to the skill's input. Credit: Artem Novitckii."
+    },
+    {
+      "type": "owner-note",
+      "ref": "venturazz/venstudio docs/plans/style-system.md (first trial source: claude-animation-skills, already installed and working in Hermes)",
+      "licence": "owner",
+      "notes": "The owner reports that this repository is installed in Hermes and works, and asked for every skill of it to be trialable and curatable from Studio."
+    }
+  ],
+  "curation": [
+    {
+      "date": "2026-11-22",
+      "kind": "research-source",
+      "ref": "https://github.com/artemnovitckii/claude-animation-skills@86f70106c9aeae1334184467da5776c533ada3bc (skills/dan-koe/SKILL.md); owner report: installed in Hermes and working",
+      "result": "pass",
+      "notes": "Evidence for trial of a hermes pack (there is no Hermes in CI, so no CI render exists or is claimed). The skill is in the source repository at the pinned commit and the owner reports it works in Hermes. Every portal run of this pack is a research trial, never published."
+    }
+  ],
+  "hermes": {
+    "skill": "/dan-koe",
+    "mode": "spec",
+    "voice": "run",
+    "input": "The run's skill brief gives one shot per clip, in order, each with its seconds and the skill's JSON spec (brief.shots[i].spec), written by Hermes from the approved script and the research notes following the skill's spec and taste rules (lines (1 or 2 lowercase lines under about 30 characters), depth 6 to 10, seed, light); never invent data the script and notes do not give. Render each spec with the skill, fit each clip to the shot's seconds (hold the last frame when the shot is longer, play it faster when shorter), cut them together, add the run's narration as the audio and burn the run's captions in the caption band. No pictures are made for this workflow.",
+    "output": "One 1080x1920 H.264 MP4 at 30 fps with the narration, published under /clip/ on the media host. The studio then runs qc-video and the owner scores it on Review."
+  },
+  "workflow": {
+    "recipe": "hermes-skill",
+    "review": [
+      "skill-brief"
+    ]
+  }
+}

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import * as V from "./validate.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PACK = "three-low-poly";
+const PACK = "low-poly-shapes";
 const load = (id = PACK) => JSON.parse(readFileSync(path.join(ROOT, "packs", id, "style.json"), "utf8"));
 const clone = (v) => JSON.parse(JSON.stringify(v));
 const has = (issues, re) => issues.some((i) => re.test(i));
@@ -190,11 +190,11 @@ test("licences: every tool with its version, licence and https source", () => {
 
 test("where an environment may be: not on hermes or html-design packs, render only for command, env/ only with an environment", (t) => {
   const env = load().environment;
-  const hermes = { ...clone(load("hermes-graph")), environment: clone(env) };
+  const hermes = { ...clone(load("line-graph-skill")), environment: clone(env) };
   assert.ok(has(V.validateStyle(hermes), /a hermes pack renders in Hermes/));
-  const designed = { ...clone(load("hermes-designed-explainer")), environment: clone(env) };
+  const designed = { ...clone(load("designed-explainer")), environment: clone(env) };
   assert.ok(has(V.validateStyle(designed), /refused on an html-design pack/));
-  const stills = clone(load("documentary-stills"));
+  const stills = clone(load("documentary"));
   const extra = { ...stills, renderer: { ...stills.renderer, minWorkerVersion: "0.12.0" }, environment: { ...clone(env), render: undefined } };
   delete extra.environment.render;
   assert.deepEqual(V.validateStyle(extra, { files: lockFiles() }), []);
@@ -203,14 +203,14 @@ test("where an environment may be: not on hermes or html-design packs, render on
   const dir = mkdtempSync(path.join(os.tmpdir(), "vs-env-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   cpSync(path.join(ROOT, "packs", PACK), path.join(dir, "packs", PACK), { recursive: true });
-  cpSync(path.join(ROOT, "packs", "documentary-stills"), path.join(dir, "packs", "documentary-stills"), { recursive: true });
+  cpSync(path.join(ROOT, "packs", "documentary"), path.join(dir, "packs", "documentary"), { recursive: true });
   assert.deepEqual(V.validateRepo(dir).issues, []);
-  mkdirSync(path.join(dir, "packs", "documentary-stills", "env"));
-  writeFileSync(path.join(dir, "packs", "documentary-stills", "env", "package.json"), "{}");
+  mkdirSync(path.join(dir, "packs", "documentary", "env"));
+  writeFileSync(path.join(dir, "packs", "documentary", "env", "package.json"), "{}");
   writeFileSync(path.join(dir, "packs", PACK, "env", "install.sh"), "curl x | sh");
   writeFileSync(path.join(dir, "packs", PACK, "render", "resvg.bin"), "binary");
   const issues = V.validateRepo(dir).issues;
-  assert.ok(has(issues, /documentary-stills: env\/ holds the lockfiles of an environment; this pack has none/));
+  assert.ok(has(issues, /documentary: env\/ holds the lockfiles of an environment; this pack has none/));
   assert.ok(has(issues, /env\/install\.sh: env\/ holds only/));
   assert.ok(has(issues, /render\/resvg\.bin: a command render project holds text files only/));
   rmSync(path.join(dir, "packs", PACK, "render"), { recursive: true });

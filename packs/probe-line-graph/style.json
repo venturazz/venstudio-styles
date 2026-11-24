@@ -1,7 +1,7 @@
 {
   "format": 1,
   "id": "probe-line-graph",
-  "name": "Probe: line graph (html-capture)",
+  "name": "Line Graph (Probe)",
   "description": "A short animated line graph with a heading and a counter, drawn in HTML and SVG. Lab pack that proves the html-capture renderer.",
   "version": "0.1.1",
   "status": "lab",

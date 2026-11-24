@@ -18,42 +18,50 @@ at runtime and needs no GitHub token. Plan: venstudio `docs/plans/style-system.m
 | `runtime/remotion/` | Copy of venstudio's Remotion runtime (`apps/render-remotion`), so CI can render the compositions here. |
 | `CONTRIBUTING.md` | The lifecycle, who may change status, and how a change reaches the studio. |
 | `docs/skills-triage.md` | Which Hermes video skills can reach a worker, what each should become, and in which order. |
+| `docs/style-naming.md` | What a style may be called: the rules, the current catalogue, and the names reserved for skills that are not packs yet. |
 
 ## Packs
 
-| Pack | Renderer | Status |
-| --- | --- | --- |
-| `explainer-flat-vector` | remotion-2d (`flat-vector-explainer`) | trial |
-| `documentary-stills` | ffmpeg-stills | trial |
-| `mystery-narration` | ffmpeg-stills | trial |
-| `horror-story` | ffmpeg-stills | trial |
-| `ambient-loop` | ffmpeg-stills | trial |
-| `travel-documentary` | ffmpeg-stills | trial |
-| `story-read-aloud` | ffmpeg-stills | trial |
-| `dafiology-fullframe` | command (Pillow frames, one plate a scene) | lab |
-| `three-low-poly` | command (three.js + resvg, CPU projection) | draft |
-| `hermes-research-explainer` | hermes (research only) | trial |
-| `probe-line-graph` | html-capture | lab |
-| `animated-line-graph` | html-capture, adapted from claude-animation-skills `graph` (MIT) | trial |
-| `minimal-line-art` | html-capture, adapted from claude-animation-skills `minimalistic-graphics` (MIT) | trial |
-| `hermes-breakdown` | hermes, skill `/breakdown` (research only) | trial |
-| `hermes-dan-koe` | hermes, skill `/dan-koe` (research only) | trial |
-| `hermes-graph` | hermes, skill `/graph` (research only) | trial |
-| `hermes-kurzgesagt` | hermes, skill `/kurzgesagt` (research only) | trial |
-| `hermes-low-poly` | hermes, skill `/low-poly` (research only) | trial |
-| `hermes-map-route` | hermes, skill `/map-route` (research only) | trial |
-| `hermes-minecraft` | hermes, skill `/minecraft` (research only) | trial |
-| `hermes-minimalistic-graphics` | hermes, skill `/minimalistic-graphics` (research only) | trial |
-| `hermes-stick-figure` | hermes, skill `/stick-figure` (research only, a full reel) | trial |
-| `hermes-zach-d-films` | hermes, skill `/zach-d-films`, alias `/zach-3d-films` (research only, a full reel) | trial |
+The picker shows `name`; `id` is the name the repo, the lockfile and old runs use. The naming rules and the names
+reserved for skills that are not packs yet are in [docs/style-naming.md](docs/style-naming.md).
 
-The first seven were migrated from the portal's catalogue with their parameters unchanged. `animated-line-graph` and
-`minimal-line-art` adapt two quick skills of https://github.com/artemnovitckii/claude-animation-skills (MIT, fonts OFL);
-their READMEs credit the author and say what was adapted and what changed. The ten `hermes-*` packs are one research
-pack per skill of the same repository (the `zach-3d-films` alias is part of `hermes-zach-d-films`): Hermes, which has
-the repository installed, renders them with the skill itself, so they carry a contract and the mapping to the
-skill's input but no code; they are research only and never published. The other catalogue styles are not packs
-yet; the portal lists them as Planned.
+| Pack | Name | Family | Renderer | Status |
+| --- | --- | --- | --- | --- |
+| `designed-explainer` | Designed Explainer | explainer | html-capture | trial |
+| `explainer-flat-vector` | Flat Vector | explainer | remotion-2d (`flat-vector-explainer`) | trial |
+| `research-render` | Research Render | explainer | hermes (research only) | retired |
+| `documentary` | Documentary | documentary | ffmpeg-stills | trial |
+| `travel-documentary` | Travel Doc | documentary | ffmpeg-stills | trial |
+| `horror-narration` | Horror Story | narrative | ffmpeg-stills | trial |
+| `mystery-narration` | Mystery Story | narrative | ffmpeg-stills | trial |
+| `full-frame` | Puppet | narrative | command | lab |
+| `story-read-aloud` | Read-Aloud | narrative | ffmpeg-stills | trial |
+| `flat-space` | Kurzgesagt | animation-2d | hermes (skill `/kurzgesagt`, research only) | trial |
+| `stick-figure` | Stick Figure | animation-2d | hermes (skill `/stick-figure`, research only) | trial |
+| `exploded-view` | Exploded View | animation-3d | hermes (skill `/breakdown`, research only) | trial |
+| `low-poly-shapes` | Low-Poly 3D | animation-3d | command | draft |
+| `map-route` | Map Route | animation-3d | hermes (skill `/map-route`, research only) | trial |
+| `ps1-low-poly` | PS1 Retro | animation-3d | hermes (skill `/low-poly`, research only) | trial |
+| `what-if-3d` | Zach 3D Films | animation-3d | hermes (skill `/zach-d-films`, research only) | trial |
+| `branching-lines` | Dan Koe | motion-graphics | hermes (skill `/dan-koe`, research only) | trial |
+| `minimal-line-art` | Line Art | motion-graphics | html-capture | trial |
+| `line-graph` | Line Graph | motion-graphics | html-capture | trial |
+| `probe-line-graph` | Line Graph (Probe) | motion-graphics | html-capture | lab |
+| `line-graph-skill` | Line Graph (Skill) | motion-graphics | hermes (skill `/graph`, research only) | retired |
+| `step-line-art-skill` | Step Line Art (Skill) | motion-graphics | hermes (skill `/minimalistic-graphics`, research only) | retired |
+| `voxel-build` | Minecraft | game-style | hermes (skill `/minecraft`, research only) | trial |
+| `ambient-loop` | Ambient Loop | ambient | ffmpeg-stills | trial |
+
+The first seven were migrated from the portal's catalogue with their parameters unchanged. `line-graph` and
+`minimal-line-art` adapt two quick skills of https://github.com/artemnovitckii/claude-animation-skills (MIT, fonts
+OFL); their READMEs credit the author and say what was adapted and what changed. The Hermes packs (`exploded-view`,
+`branching-lines`, `designed-explainer`, `flat-space`, `ps1-low-poly`, `map-route`, `voxel-build`, `stick-figure`,
+`what-if-3d`) are one research pack per skill of that repository: Hermes, which has the repository installed, renders
+them with the skill itself, so they carry a contract and the mapping to the skill's input but no code; they are
+research only and never published. Three packs are retired: `line-graph-skill` and `step-line-art-skill` show the same
+look as a worker pack that needs no licence decision, and `research-render` was never a look (it rendered the whole
+video with Hermes). The other catalogue styles are not packs yet; the portal lists them as Planned, and their names
+are reserved in docs/style-naming.md so a conversion does not invent a second one.
 
 ## Checks
 
