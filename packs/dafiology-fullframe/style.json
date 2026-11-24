@@ -79,9 +79,9 @@
     },
     {
       "type": "repo",
-      "ref": "https://pypi.org/project/pillow/11.3.0/: manylinux x86_64 wheels for cp311, cp312 and cp313",
+      "ref": "https://pypi.org/project/pillow/11.3.0/: manylinux x86_64 wheels for cp311, cp312, cp313 and cp314",
       "licence": "MIT-CMU (Pillow 11.3.0)",
-      "notes": "The hashes in env/requirements.txt are the digests PyPI reports for those wheels; pip installs with --require-hashes --only-binary=:all: --no-deps, so no sdist is ever built."
+      "notes": "The eight hashes in env/requirements.txt are the digests PyPI reports for those wheels; pip installs with --require-hashes --only-binary=:all: --no-deps, so no sdist is ever built."
     },
     {
       "type": "owner-note",
