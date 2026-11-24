@@ -40,7 +40,7 @@ analysis tool. Those are not style packs at all and should not be given one.
 
 ## The library as it stands
 
-- 24 packs: 21 `trial`, 1 `lab`, 2 `draft`; **0 `proven`, 0 `listed`**.
+- 24 packs: 21 `trial`, 2 `lab`, 1 `draft`; **0 `proven`, 0 `listed`**.
 - By engine: 11 `hermes`, 6 `ffmpeg-stills`, 4 `html-capture`, 1 `remotion-2d`, 2 `command`.
 - 11 skills in `skills/candidate/` (the claude-animation-skills import), 0 in `skills/curated/`.
 
