@@ -20,7 +20,7 @@
     "node"
   ],
   "packs": [
-    "hermes-graph"
+    "line-graph-skill"
   ],
   "curation": [],
   "notes": "Imported unchanged from upstream; not curated yet (skills/README.md). A quick skill.",

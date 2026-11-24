@@ -1,7 +1,7 @@
 {
   "format": 1,
   "id": "minimal-line-art",
-  "name": "Minimal line art (html-capture)",
+  "name": "Minimal Line Art",
   "description": "Black and white line art: hairline steps rise, a white dot hops up them and an orbit draws around it at the top, under one quiet lowercase line. Adapted from minimalistic-graphics (MIT).",
   "version": "0.1.2",
   "status": "trial",

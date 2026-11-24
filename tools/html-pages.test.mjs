@@ -158,8 +158,8 @@ test("every html-capture page renders its fixture in a stand-in DOM: init answer
   for (const p of packs) await render(p);
 });
 
-test("animated-line-graph draws from the payload: the count lands on the value, a scene without numbers shows none", { skip: why ?? false }, async () => {
-  const pack = htmlPacks().find((p) => p.id === "animated-line-graph");
+test("line-graph draws from the payload: the count lands on the value, a scene without numbers shows none", { skip: why ?? false }, async () => {
+  const pack = htmlPacks().find((p) => p.id === "line-graph");
   assert.ok(pack);
   const { ctx, root } = await render(pack);
   const g = ctx.VSGraph;

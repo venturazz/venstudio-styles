@@ -13,7 +13,7 @@ conversions should be. Written after auditing the library on 24 November 2026.
 - **Skill kita yang sudah teruji justru yang paling mudah dipindah.** Yang benar-benar dipakai produksi di mesin ini:
   Dafiology/ChikooTale (20+ episode), Godot sprite film (Malin, Hedge), low-poly station (15 klip), Roblox kit (12
   klip), three.js (13 klip), POV page (2 klip). Semuanya CPU-only — tidak ada yang butuh GPU.
-- **PR ini mengerjakan satu di antaranya sampai selesai** sebagai bukti: `packs/dafiology-fullframe`, engine `command`,
+- **PR ini mengerjakan satu di antaranya sampai selesai** sebagai bukti: `packs/full-frame`, engine `command`,
   Pillow + font DejaVu yang di-pin sha256, fixture 12 detik yang benar-benar dirender di sini (360 frame, mp4 lolos
   `check-video`). Sisanya masuk antrean konversi di bawah, sudah diperiksa engine-nya satu per satu.
 - **Yang tidak bisa:** semua yang butuh model (gambar/video provider, TTS berbayar) tetap `hermes`; Godot butuh
@@ -56,7 +56,7 @@ rest becomes input the studio supplies (stills, script, timings).
 
 | Skill | What it emits | Tested here | Worker engine it fits | Next step |
 | --- | --- | --- | --- | --- |
-| `flat-vector-explainer-video` | Dafiology full-frame: plate, push, HUD readout, tag, hook | yes (20+ eps) | `command` (PIL) | **done in this PR** as `dafiology-fullframe` |
+| `flat-vector-explainer-video` | Dafiology full-frame: plate, push, HUD readout, tag, hook | yes (20+ eps) | `command` (PIL) | **done in this PR** as `full-frame` |
 | `stickman-chikoomollian` | same engine, stick-figure cast | yes (same runs) | `command` (PIL) | second pack, reusing `dafiology-pillow` |
 | `pov-html-engine-capture` | one HTML page, `renderFrame(i)` at 9:16 | yes (2 clips) | `html-capture` | port `povquake/index.html` as `render/index.html` |
 | `low-poly-station-short` | per-shot spec → 3D plate + painted HUD, headless Chromium | yes (15 clips) | `html-capture` | page already exists (`lowpoly_kunti/engine`), needs `window.VENSTUDIO` |
@@ -71,7 +71,7 @@ rest becomes input the studio supplies (stills, script, timings).
 | `long-form-narrated-video`, `agnes-character-video-shorts`, `ai-video-generation`, `restyle-film-cast` | provider images/video + voice | partly | `hermes` only | research: paid or model-in-loop, never in a pack |
 | `manim-video` | Manim CE scenes | no recent render | `command` with cairo/pango, else `hermes` | text-only scope, or name the libs and let the owner decide |
 | `ascii-video` | ffmpeg + Python ASCII frames | not counted | `command` | cheap second `command` pack; needs numpy too |
-| `claude-animation-skills` — the four three.js templates (`/minecraft`, `/low-poly`, `/map-route`, `/breakdown`) | one page, spec JSON in, `renderFrame(i)`, WebGL | upstream only, never rendered here | `html-capture` | three vendored as text `.js`, the `.woff2` font as base64 in a `.css`, WebGL on SwiftShader (the worker enables it). Cheapest of the imports: `hermes-minecraft` already carries the spec |
+| `claude-animation-skills` — the four three.js templates (`/minecraft`, `/low-poly`, `/map-route`, `/breakdown`) | one page, spec JSON in, `renderFrame(i)`, WebGL | upstream only, never rendered here | `html-capture` | three vendored as text `.js`, the `.woff2` font as base64 in a `.css`, WebGL on SwiftShader (the worker enables it). Cheapest of the imports: `voxel-build` (formerly `hermes-minecraft`) already carries the spec |
 | `claude-animation-skills` — the four GSAP templates (`/dan-koe`, `/graph`, `/minimalistic-graphics`, `/kurzgesagt`) | a paused GSAP timeline seeked per frame | upstream only | `html-capture` | **blocked: GSAP licence** (owner decision) |
 | `p5js` | a sketch page drawing frame N | partly | `html-capture` | same shape as the three.js route, after it |
 | `video-forensics`, `short-form-video-qa`, `video-continuity-rhythm`, `look-match-study`, `songsee`, `audio-stem-separation`, `gif-search` | analysis / QC / assets, no look | n/a | none | not packs; they are tools a run or the owner uses |
@@ -81,7 +81,7 @@ rest becomes input the studio supplies (stills, script, timings).
 
 **Queue A — `html-capture` (cheapest, highest return).** `pov-html-engine-capture`, `low-poly-station-short`,
 `threejs-3d-short`, then the two Roblox three.js kits; then the four three.js templates of the import, `/minecraft`
-first (`hermes-minecraft` already describes the spec it needs, and the page exists). These already are "one page + `renderFrame(i)`" on a headless
+first: `voxel-build` (formerly `hermes-minecraft`) already describes the spec it needs, and the page exists. These already are "one page + `renderFrame(i)`" on a headless
 Chromium with SwiftShader; the worker has exactly that page server, virtual clock and caption burn. Each needs: the page
 moved into `render/`, a `VENSTUDIO.init(props)` that reads the scene plan, `renderFrame(f)`, fonts vendored as base64 in
 a `.css` (no `.woff2`: html-capture takes text files only), three vendored as `render/vendor/three/three.min.js` plus
@@ -100,9 +100,9 @@ linux-x64 build. That is an owner decision, not a handover.
 
 ## What this PR does, and what it does not
 
-- Adds `packs/dafiology-fullframe` (engine `command`, `lab`): the frame loop of the engine that rendered EP21–EP23,
+- Adds `packs/full-frame` (engine `command`, `lab`): the frame loop of the engine that rendered EP21–EP23,
   plates only, with the chip, the tag and the hook. Environment `dafiology-pillow` pins Pillow 11.3.0 (six wheel
-  hashes) and DejaVu 2.37 (sha256 + byte size); probe proves text shaping; render argv is the shape `three-low-poly`
+  hashes) and DejaVu 2.37 (sha256 + byte size); probe proves text shaping; render argv is the shape `low-poly-shapes`
   proved.
 - Adds this document and the two pack-id lines its tests expect.
 - Claims exactly one thing beyond the code: CI run 45314894968 installed the environment on a clean runner, rendered

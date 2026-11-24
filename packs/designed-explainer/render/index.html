@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>designed-explainer reference page</title>
+<!--
+  Reference page of the designed-explainer pack (html-design workflow, research only).
+  In a run, Hermes writes a page like this one for each video. This page shows the rules every such page follows:
+  one self-contained index.html with inline CSS and JS, no network, the pack's vendored fonts by relative path,
+  the window.VENSTUDIO contract, everything drawn from the frame number, and the caption safe area kept clear.
+  CI renders it from fixtures/payload.json with html-capture.
+-->
+<link rel="stylesheet" href="../pack/fonts/fonts.css" />
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #F4EFE6; }
+  #stage { position: relative; overflow: hidden; font-family: 'Inter', 'DejaVu Sans', sans-serif; }
+  .scene { position: absolute; inset: 0; opacity: 0; }
+  .heading { position: absolute; left: 8%; right: 8%; font-family: 'Inter Tight', 'Inter', sans-serif; font-weight: 700; line-height: 1.1; }
+  .kicker { position: absolute; left: 8%; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+  .bar { position: absolute; left: 8%; border-radius: 999px; }
+  .track { position: absolute; left: 8%; right: 8%; border-radius: 999px; opacity: 0.25; }
+  .dot { position: absolute; border-radius: 50%; }
+  .progress { position: absolute; left: 0; top: 0; height: 1%; }
+</style>
+</head>
+<body>
+<main id="stage"></main>
+<script>
+(() => {
+  // Two palettes from the flat-vector explainer research (explainer-flat-vector render/theme.ts), alternated per scene.
+  const PALETTES = [
+    { bg: "#F4EFE6", ink: "#1F2A44", accent: "#E4572E", accent2: "#2E86AB" },
+    { bg: "#1F2A44", ink: "#F4EFE6", accent: "#F6AE2D", accent2: "#5BC0BE" },
+  ];
+  const clamp01 = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
+  const easeOut = (t) => 1 - Math.pow(1 - clamp01(t), 3);
+  const add = (tag, cls, parent) => {
+    const n = document.createElement(tag);
+    n.className = cls;
+    parent.appendChild(n);
+    return n;
+  };
+
+  window.VENSTUDIO = {
+    async init(props) {
+      this.props = props;
+      const w = props.width;
+      const h = props.height;
+      const stage = document.getElementById("stage");
+      stage.style.width = w + "px";
+      stage.style.height = h + "px";
+      // The run's caption font, when the job has one; otherwise the pack's vendored Inter (fonts.css).
+      if (props.font) {
+        const face = new FontFace("Run Font", "url(" + props.font + ")");
+        document.fonts.add(await face.load());
+      }
+      await document.fonts.ready;
+      const unit = Math.min(w, h);
+      // Captions are burned by the worker at the bottom: nothing is drawn below 70% of the height.
+      this.scenes = props.scenes.map((s, i) => {
+        const p = PALETTES[i % PALETTES.length];
+        const root = add("section", "scene", stage);
+        root.style.background = p.bg;
+        const kicker = add("div", "kicker", root);
+        kicker.textContent = (s.beatRole || "scene") + " " + (i + 1);
+        kicker.style.top = Math.round(h * 0.12) + "px";
+        kicker.style.fontSize = Math.round(unit * 0.035) + "px";
+        kicker.style.color = p.accent2;
+        const heading = add("div", "heading", root);
+        const label = (s.elements || []).find((e) => typeof e.text === "string" && e.text);
+        heading.textContent = label ? label.text : "Step " + (i + 1);
+        heading.style.top = Math.round(h * 0.17) + "px";
+        heading.style.fontSize = Math.round(unit * 0.085) + "px";
+        heading.style.color = p.ink;
+        const track = add("div", "track", root);
+        track.style.top = Math.round(h * 0.5) + "px";
+        track.style.height = Math.round(unit * 0.05) + "px";
+        track.style.background = p.ink;
+        const bar = add("div", "bar", root);
+        bar.style.top = track.style.top;
+        bar.style.height = track.style.height;
+        bar.style.background = p.accent;
+        const dot = add("div", "dot", root);
+        const r = Math.round(unit * 0.06);
+        dot.style.width = r + "px";
+        dot.style.height = r + "px";
+        dot.style.background = p.accent2;
+        dot.style.top = Math.round(h * 0.58) + "px";
+        return { root, heading, bar, dot, start: props.timeline.startFrames[i], frames: props.timeline.frames[i], w, r };
+      });
+      this.progress = add("div", "progress", stage);
+      this.progress.style.background = PALETTES[0].accent;
+      return { totalFrames: props.totalFrames, fps: props.fps, width: w, height: h };
+    },
+    renderFrame(frame) {
+      const fps = this.props.fps;
+      for (const s of this.scenes) {
+        const local = frame - s.start;
+        const on = local >= 0 && local < s.frames;
+        s.root.style.opacity = on ? "1" : "0";
+        if (!on) continue;
+        const t = local / fps;
+        const enter = easeOut(t / 0.5);
+        s.heading.style.transform = "translateY(" + Math.round((1 - enter) * 40) + "px)";
+        s.heading.style.opacity = String(enter);
+        const grow = easeOut((t - 0.3) / 1.2);
+        s.bar.style.width = Math.round(s.w * 0.84 * grow) + "px";
+        const x = 0.08 * s.w + (0.84 * s.w - s.r) * clamp01(local / Math.max(1, s.frames - 1));
+        s.dot.style.left = Math.round(x) + "px";
+      }
+      this.progress.style.width = Math.round((this.props.width * (frame + 1)) / this.props.totalFrames) + "px";
+    },
+  };
+})();
+</script>
+</body>
+</html>
