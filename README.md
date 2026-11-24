@@ -17,6 +17,7 @@ at runtime and needs no GitHub token. Plan: venstudio `docs/plans/style-system.m
 | `tools/assemble-remotion.mjs` | Builds a Remotion project from the runtime and the Remotion packs, as workers get it. |
 | `runtime/remotion/` | Copy of venstudio's Remotion runtime (`apps/render-remotion`), so CI can render the compositions here. |
 | `CONTRIBUTING.md` | The lifecycle, who may change status, and how a change reaches the studio. |
+| `docs/skills-triage.md` | Which Hermes video skills can reach a worker, what each should become, and in which order. |
 
 ## Packs
 
@@ -29,6 +30,8 @@ at runtime and needs no GitHub token. Plan: venstudio `docs/plans/style-system.m
 | `ambient-loop` | ffmpeg-stills | trial |
 | `travel-documentary` | ffmpeg-stills | trial |
 | `story-read-aloud` | ffmpeg-stills | trial |
+| `dafiology-fullframe` | command (Pillow frames, one plate a scene) | lab |
+| `three-low-poly` | command (three.js + resvg, CPU projection) | draft |
 | `hermes-research-explainer` | hermes (research only) | trial |
 | `probe-line-graph` | html-capture | lab |
 | `animated-line-graph` | html-capture, adapted from claude-animation-skills `graph` (MIT) | trial |
