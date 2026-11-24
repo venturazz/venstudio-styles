@@ -158,8 +158,28 @@ def main():
             plates[sc["image"]] = cover(Image.open(p), W, H)
 
     hook_txt = text_of(scenes[0]["scene"], "heading")
-    hook_size = int(58 * s)
-    hook_font = ImageFont.truetype(font_path, hook_size)
+    # The hook is written by the request, so it can be any length: fit it, and break it in two before it leaves the frame.
+    hook_lines = []
+    if hook_txt:
+        probe = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+        max_w = W - int(80 * s)
+        sizes = [int(v * s) for v in (58, 52, 46, 40, 36, 32, 28)]
+        one = fit_font(font_path, hook_txt, probe, max_w, sizes)
+        if probe.textlength(hook_txt, font=one) <= max_w:
+            hook_lines = [(hook_txt, one)]
+        else:
+            words = hook_txt.split()
+            for cut in range(1, len(words)):
+                l1, l2 = " ".join(words[:cut]), " ".join(words[cut:])
+                for size in sizes:
+                    f2 = ImageFont.truetype(font_path, size)
+                    if max(probe.textlength(l1, font=f2), probe.textlength(l2, font=f2)) <= max_w:
+                        hook_lines = [(l1, f2), (l2, f2)]
+                        break
+                if hook_lines:
+                    break
+            if not hook_lines:                       # one unbreakable word: put it on screen at the smallest size
+                hook_lines = [(hook_txt, ImageFont.truetype(font_path, sizes[-1]))]
     chip_sizes = [int(v * s) for v in (21, 19, 17, 15, 14)]
     tag_size = int(19 * s)
 
@@ -225,12 +245,15 @@ def main():
                 d = ImageDraw.Draw(frame)
 
         # ---- hook: the first 1.6 s carry the promise, then they get out of the picture
-        if hook_txt and t < 1.6:
+        if hook_lines and t < 1.6:
             al = min(1.0, t / 0.25) * (1.0 if t < 1.28 else max(0.0, (1.6 - t) / 0.32))
-            tw = d.textlength(hook_txt, font=hook_font)
-            d.text(((W - tw) / 2, int(852 * (H / DH))), hook_txt, font=hook_font,
-                   fill=(int(255 * al), int(255 * al), int(255 * al)),
-                   stroke_width=max(2, int(6 * s)), stroke_fill=INK)
+            lh = max(f.size for _, f in hook_lines) + int(10 * s)
+            y0 = int(852 * (H / DH)) - (len(hook_lines) - 1) * lh // 2
+            for li, (txt, fnt) in enumerate(hook_lines):
+                tw = d.textlength(txt, font=fnt)
+                d.text(((W - tw) / 2, y0 + li * lh), txt, font=fnt,
+                       fill=(int(255 * al), int(255 * al), int(255 * al)),
+                       stroke_width=max(2, int(6 * s)), stroke_fill=INK)
 
         frame.save(os.path.join(out, f"{fi:06d}.png"), optimize=False, compress_level=1)
         if fi % 60 == 0 or fi == total - 1:
