@@ -62,6 +62,10 @@ and see two different videos. When you touch a pack, render both and compare the
 fixture's 3 scenes and 12 s in English. The renderer writes `totalFrames` frames and draws each scene's copy from the
 payload, so the second run is 630 frames of a different film — same look, different video.
 
+It also paid for itself on the first render: the hook is request copy, but its size was fixed at 58 px, so
+*Enam pagi, setiap hari* ran off the right edge. The size was the script. `fit_font` over 58..28 px and one break by
+words fixed it. Nothing in the CI fixture would have found that — its own line is short enough to fit.
+
 ## Hermes packs: where a style quietly becomes a script
 
 The engine `hermes` packs have no render code. The skill *is* the engine, and its text is upstream (MIT, pinned by
