@@ -11,6 +11,7 @@ at runtime and needs no GitHub token. Plan: venstudio `docs/plans/style-system.m
 | `skills/curated/<id>/`, `skills/candidate/<id>/` | The agent skills the styles are made with: curated (approved by the owner or Hermes) and not yet curated. Each holds `skill.json` and the skill's files. See `skills/README.md`. |
 | `skills/kits/<id>/` | Shared files several skills use (claude-animation-skills' `kit/`). |
 | `tools/skills.mjs` | Validates `skills/` and its links to the packs. |
+| `tools/style-check.mjs` | Asks each pack whether it renders the request or only its own fixture (docs/style-vs-script.md). |
 | `FORMAT.md` | The pack format, version 1. |
 | `schema/style.schema.json` | JSON Schema of `style.json`, for editors. |
 | `tools/validate.mjs` | The validator (zero dependencies). Vendored into venstudio; edit it only here. |
@@ -18,6 +19,7 @@ at runtime and needs no GitHub token. Plan: venstudio `docs/plans/style-system.m
 | `runtime/remotion/` | Copy of venstudio's Remotion runtime (`apps/render-remotion`), so CI can render the compositions here. |
 | `CONTRIBUTING.md` | The lifecycle, who may change status, and how a change reaches the studio. |
 | `docs/skills-triage.md` | Which Hermes video skills can reach a worker, what each should become, and in which order. |
+| `docs/style-vs-script.md` | What makes a pack a style instead of a script, the six checks, and the second-fixture convention. |
 | `docs/style-naming.md` | What a style may be called: the rules, the current catalogue, and the names reserved for skills that are not packs yet. |
 
 ## Packs
@@ -68,6 +70,7 @@ are reserved in docs/style-naming.md so a conversion does not invent a second on
 ```
 node tools/validate.mjs
 node tools/skills.mjs
+node tools/style-check.mjs       # a style reads props; a script draws what it was written with
 node --test "tools/*.test.mjs"   # includes html-pages.test.mjs: every html-capture page run in a stand-in DOM
 ```
 
