@@ -43,6 +43,13 @@ def arg(name, default=None):
     raise SystemExit(f"missing --{name}")
 
 
+def opt(name):
+    """A flag the worker may add or leave out: --font is passed by the worker's command renderer when the job has a
+    font, and the environment's own copy is used when it does not."""
+    i = sys.argv.index(f"--{name}") if f"--{name}" in sys.argv else -1
+    return sys.argv[i + 1] if i >= 0 and i + 1 < len(sys.argv) else None
+
+
 def ease(u, kind="smooth"):
     u = min(1.0, max(0.0, u))
     if kind == "linear":
@@ -111,7 +118,7 @@ def main():
         raise SystemExit("props: no totalFrames and no durationSec")
     s = W / DW
 
-    font_path = arg("font", None) or os.path.join(env, FONT_FILE)
+    font_path = opt("font") or os.path.join(env, FONT_FILE)
     if not os.path.exists(font_path):
         raise SystemExit(f"font not found: {font_path}")
 
