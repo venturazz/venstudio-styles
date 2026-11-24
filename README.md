@@ -32,9 +32,9 @@ reserved for skills that are not packs yet are in [docs/style-naming.md](docs/st
 | `research-render` | Research Render | explainer | hermes (research only) | retired |
 | `documentary` | Documentary | documentary | ffmpeg-stills | trial |
 | `travel-documentary` | Travel Doc | documentary | ffmpeg-stills | trial |
-| `full-frame` | Dafiology Full-Frame | narrative | command | lab |
 | `horror-narration` | Horror Story | narrative | ffmpeg-stills | trial |
 | `mystery-narration` | Mystery Story | narrative | ffmpeg-stills | trial |
+| `full-frame` | Puppet | narrative | command | lab |
 | `story-read-aloud` | Read-Aloud | narrative | ffmpeg-stills | trial |
 | `flat-space` | Kurzgesagt | animation-2d | hermes (skill `/kurzgesagt`, research only) | trial |
 | `stick-figure` | Stick Figure | animation-2d | hermes (skill `/stick-figure`, research only) | trial |

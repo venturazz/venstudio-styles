@@ -38,9 +38,9 @@ Generated from `packs/*/style.json`; `node tools/validate.mjs` is the authority 
 | `research-render` | Research Render | explainer | hermes (research) | retired |
 | `documentary` | Documentary | documentary | ffmpeg-stills | trial |
 | `travel-documentary` | Travel Doc | documentary | ffmpeg-stills | trial |
-| `full-frame` | Dafiology Full-Frame | narrative | command | lab |
 | `horror-narration` | Horror Story | narrative | ffmpeg-stills | trial |
 | `mystery-narration` | Mystery Story | narrative | ffmpeg-stills | trial |
+| `full-frame` | Puppet | narrative | command | lab |
 | `story-read-aloud` | Read-Aloud | narrative | ffmpeg-stills | trial |
 | `flat-space` | Kurzgesagt | animation-2d | hermes (research) | trial |
 | `stick-figure` | Stick Figure | animation-2d | hermes (research) | trial |

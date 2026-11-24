@@ -56,7 +56,7 @@ rest becomes input the studio supplies (stills, script, timings).
 
 | Skill | What it emits | Tested here | Worker engine it fits | Next step |
 | --- | --- | --- | --- | --- |
-| `flat-vector-explainer-video` | Dafiology full-frame: plate, push, HUD readout, tag, hook | yes (20+ eps) | `command` (PIL) | **done in this PR** as `full-frame` |
+| `flat-vector-explainer-video` | Dafiology full-frame: plate, push, HUD readout, tag, hook | yes (20+ eps) | `command` (PIL) | **done in this PR** as `full-frame` (label: Puppet) |
 | `stickman-chikoomollian` | same engine, stick-figure cast | yes (same runs) | `command` (PIL) | second pack, reusing `dafiology-pillow` |
 | `pov-html-engine-capture` | one HTML page, `renderFrame(i)` at 9:16 | yes (2 clips) | `html-capture` | port `povquake/index.html` as `render/index.html` |
 | `low-poly-station-short` | per-shot spec → 3D plate + painted HUD, headless Chromium | yes (15 clips) | `html-capture` | page already exists (`lowpoly_kunti/engine`), needs `window.VENSTUDIO` |

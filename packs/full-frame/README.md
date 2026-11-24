@@ -1,4 +1,4 @@
-# Dafiology full-frame (one plate a scene, camera grammar)
+# Puppet (one plate a scene, camera grammar)
 
 One full-frame plate a scene, held and moved by the camera grammar the ChikooTale engine measured over three published
 short episodes: a push that settles instead of crawling (16 % at most, snapped in), a 2.6 / 3.4 px breath so a still
