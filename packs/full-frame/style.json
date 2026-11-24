@@ -1,7 +1,7 @@
 {
   "format": 1,
   "id": "full-frame",
-  "name": "Full-Frame Story",
+  "name": "Dafiology Full-Frame",
   "description": "One full-frame plate a scene, pushed and drifted by a measured camera, with a value-coloured readout chip, a callout tag and the hook burned in for the first 1.6 s. Frames drawn with Pillow.",
   "version": "0.1.1",
   "status": "lab",

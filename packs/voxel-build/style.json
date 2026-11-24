@@ -1,7 +1,7 @@
 {
   "format": 1,
   "id": "voxel-build",
-  "name": "Minecraft Voxel",
+  "name": "Minecraft",
   "description": "A cottage builds itself block by block on a grassy hill, the chimney slams in, the windows light up and a pixel-font word lands. Hermes renders it with /minecraft.",
   "version": "0.2.0",
   "status": "trial",

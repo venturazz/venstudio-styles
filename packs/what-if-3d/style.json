@@ -1,7 +1,7 @@
 {
   "format": 1,
   "id": "what-if-3d",
-  "name": "Zach 3D What-If",
+  "name": "Zach 3D Films",
   "description": "A 3D cartoon what-if explainer in three.js: procedural people and props, a blue studio sky, slow-motion impacts, a red force ripple and 1 to 3 word captions. Hermes makes it with /zach-d-films (alias /zach-3d-films).",
   "version": "0.2.0",
   "status": "trial",

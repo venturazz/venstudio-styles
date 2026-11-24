@@ -28,28 +28,28 @@ reserved for skills that are not packs yet are in [docs/style-naming.md](docs/st
 | Pack | Name | Family | Renderer | Status |
 | --- | --- | --- | --- | --- |
 | `designed-explainer` | Designed Explainer | explainer | html-capture | trial |
-| `explainer-flat-vector` | Flat Vector Explainer | explainer | remotion-2d (`flat-vector-explainer`) | trial |
+| `explainer-flat-vector` | Flat Vector | explainer | remotion-2d (`flat-vector-explainer`) | trial |
 | `research-render` | Research Render | explainer | hermes (research only) | retired |
 | `documentary` | Documentary | documentary | ffmpeg-stills | trial |
-| `travel-documentary` | Travel Documentary | documentary | ffmpeg-stills | trial |
-| `full-frame` | Full-Frame Story | narrative | command | lab |
-| `horror-narration` | Horror Narration | narrative | ffmpeg-stills | trial |
-| `mystery-narration` | Mystery Narration | narrative | ffmpeg-stills | trial |
-| `story-read-aloud` | Story Read-Aloud | narrative | ffmpeg-stills | trial |
-| `flat-space` | Kurzgesagt Flat | animation-2d | hermes (skill `/kurzgesagt`, research only) | trial |
+| `travel-documentary` | Travel Doc | documentary | ffmpeg-stills | trial |
+| `full-frame` | Dafiology Full-Frame | narrative | command | lab |
+| `horror-narration` | Horror Story | narrative | ffmpeg-stills | trial |
+| `mystery-narration` | Mystery Story | narrative | ffmpeg-stills | trial |
+| `story-read-aloud` | Read-Aloud | narrative | ffmpeg-stills | trial |
+| `flat-space` | Kurzgesagt | animation-2d | hermes (skill `/kurzgesagt`, research only) | trial |
 | `stick-figure` | Stick Figure | animation-2d | hermes (skill `/stick-figure`, research only) | trial |
 | `exploded-view` | Exploded View | animation-3d | hermes (skill `/breakdown`, research only) | trial |
-| `low-poly-shapes` | Low-Poly Shapes | animation-3d | command | draft |
+| `low-poly-shapes` | Low-Poly 3D | animation-3d | command | draft |
 | `map-route` | Map Route | animation-3d | hermes (skill `/map-route`, research only) | trial |
-| `ps1-low-poly` | PS1 Low-Poly | animation-3d | hermes (skill `/low-poly`, research only) | trial |
-| `what-if-3d` | Zach 3D What-If | animation-3d | hermes (skill `/zach-d-films`, research only) | trial |
-| `line-graph` | Animated Line Graph | motion-graphics | html-capture | trial |
-| `branching-lines` | Dan Koe Lines | motion-graphics | hermes (skill `/dan-koe`, research only) | trial |
+| `ps1-low-poly` | PS1 Retro | animation-3d | hermes (skill `/low-poly`, research only) | trial |
+| `what-if-3d` | Zach 3D Films | animation-3d | hermes (skill `/zach-d-films`, research only) | trial |
+| `branching-lines` | Dan Koe | motion-graphics | hermes (skill `/dan-koe`, research only) | trial |
+| `minimal-line-art` | Line Art | motion-graphics | html-capture | trial |
+| `line-graph` | Line Graph | motion-graphics | html-capture | trial |
 | `probe-line-graph` | Line Graph (Probe) | motion-graphics | html-capture | lab |
 | `line-graph-skill` | Line Graph (Skill) | motion-graphics | hermes (skill `/graph`, research only) | retired |
-| `minimal-line-art` | Minimal Line Art | motion-graphics | html-capture | trial |
 | `step-line-art-skill` | Step Line Art (Skill) | motion-graphics | hermes (skill `/minimalistic-graphics`, research only) | retired |
-| `voxel-build` | Minecraft Voxel | game-style | hermes (skill `/minecraft`, research only) | trial |
+| `voxel-build` | Minecraft | game-style | hermes (skill `/minecraft`, research only) | trial |
 | `ambient-loop` | Ambient Loop | ambient | ffmpeg-stills | trial |
 
 The first seven were migrated from the portal's catalogue with their parameters unchanged. `line-graph` and

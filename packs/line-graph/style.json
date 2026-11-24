@@ -1,7 +1,7 @@
 {
   "format": 1,
   "id": "line-graph",
-  "name": "Animated Line Graph",
+  "name": "Line Graph",
   "description": "A smooth line draws itself on white while one big number counts up with its tip and lands on the final value. Adapted from the graph skill of claude-animation-skills (MIT).",
   "version": "0.1.2",
   "status": "trial",

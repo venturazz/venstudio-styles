@@ -1,7 +1,7 @@
 {
   "format": 1,
   "id": "branching-lines",
-  "name": "Dan Koe Lines",
+  "name": "Dan Koe",
   "description": "One white dot on pure black grows into a hairline tree that splits at every step; the tips light up and one quiet lowercase line swaps to a second. Hermes renders it with /dan-koe.",
   "version": "0.2.0",
   "status": "trial",

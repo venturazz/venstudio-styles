@@ -17,7 +17,7 @@ and the name says what the film looks like, not which tool renders it.
    implementation detail in `renderer`, not part of the name. Three Roblox kits are one style (`blocky-story`), not
    three.
 5. **`name` may carry the reference; `id` may not.** These packs are research and template work, never published, so a
-   familiar reference in the label is allowed and helps a person pick: *Minecraft Voxel*, *Kurzgesagt Flat*. The source
+   familiar reference in the label is allowed and helps a person pick: *Minecraft*, *Kurzgesagt*. The source
    is credited in `provenance` and the pack README, and nothing may claim the author's endorsement. The `id` stays a
    descriptive slug (`voxel-build`), because the id is what the lockfile and old runs pin — a reference in the label can
    change, an id cannot.
@@ -34,28 +34,28 @@ Generated from `packs/*/style.json`; `node tools/validate.mjs` is the authority 
 | id | name | family | engine | status |
 | --- | --- | --- | --- | --- |
 | `designed-explainer` | Designed Explainer | explainer | html-capture | trial |
-| `explainer-flat-vector` | Flat Vector Explainer | explainer | remotion-2d | trial |
+| `explainer-flat-vector` | Flat Vector | explainer | remotion-2d | trial |
 | `research-render` | Research Render | explainer | hermes (research) | retired |
 | `documentary` | Documentary | documentary | ffmpeg-stills | trial |
-| `travel-documentary` | Travel Documentary | documentary | ffmpeg-stills | trial |
-| `full-frame` | Full-Frame Story | narrative | command | lab |
-| `horror-narration` | Horror Narration | narrative | ffmpeg-stills | trial |
-| `mystery-narration` | Mystery Narration | narrative | ffmpeg-stills | trial |
-| `story-read-aloud` | Story Read-Aloud | narrative | ffmpeg-stills | trial |
-| `flat-space` | Kurzgesagt Flat | animation-2d | hermes (research) | trial |
+| `travel-documentary` | Travel Doc | documentary | ffmpeg-stills | trial |
+| `full-frame` | Dafiology Full-Frame | narrative | command | lab |
+| `horror-narration` | Horror Story | narrative | ffmpeg-stills | trial |
+| `mystery-narration` | Mystery Story | narrative | ffmpeg-stills | trial |
+| `story-read-aloud` | Read-Aloud | narrative | ffmpeg-stills | trial |
+| `flat-space` | Kurzgesagt | animation-2d | hermes (research) | trial |
 | `stick-figure` | Stick Figure | animation-2d | hermes (research) | trial |
 | `exploded-view` | Exploded View | animation-3d | hermes (research) | trial |
-| `low-poly-shapes` | Low-Poly Shapes | animation-3d | command | draft |
+| `low-poly-shapes` | Low-Poly 3D | animation-3d | command | draft |
 | `map-route` | Map Route | animation-3d | hermes (research) | trial |
-| `ps1-low-poly` | PS1 Low-Poly | animation-3d | hermes (research) | trial |
-| `what-if-3d` | Zach 3D What-If | animation-3d | hermes (research) | trial |
-| `line-graph` | Animated Line Graph | motion-graphics | html-capture | trial |
-| `branching-lines` | Dan Koe Lines | motion-graphics | hermes (research) | trial |
+| `ps1-low-poly` | PS1 Retro | animation-3d | hermes (research) | trial |
+| `what-if-3d` | Zach 3D Films | animation-3d | hermes (research) | trial |
+| `branching-lines` | Dan Koe | motion-graphics | hermes (research) | trial |
+| `minimal-line-art` | Line Art | motion-graphics | html-capture | trial |
+| `line-graph` | Line Graph | motion-graphics | html-capture | trial |
 | `probe-line-graph` | Line Graph (Probe) | motion-graphics | html-capture | lab |
 | `line-graph-skill` | Line Graph (Skill) | motion-graphics | hermes (research) | retired |
-| `minimal-line-art` | Minimal Line Art | motion-graphics | html-capture | trial |
 | `step-line-art-skill` | Step Line Art (Skill) | motion-graphics | hermes (research) | retired |
-| `voxel-build` | Minecraft Voxel | game-style | hermes (research) | trial |
+| `voxel-build` | Minecraft | game-style | hermes (research) | trial |
 | `ambient-loop` | Ambient Loop | ambient | ffmpeg-stills | trial |
 
 Retired packs stay in the repo so old runs remain explainable, but they never appear in New Video. `line-graph-skill`
@@ -73,7 +73,7 @@ second one; the id is not valid until `packs/<id>/` exists.
 | `/minecraft` | `voxel-build` | Minecraft Voxel | game-style | pack exists at trial on engine `hermes`; the page only needs three + woff2 as text, WebGL is already on SwiftShader |
 | `low-poly-station-short` | `transit-station` | Transit Station | animation-3d | 15 clips; page → `html-capture` |
 | `threejs-3d-short` | `3d-film` | 3D Film | animation-3d | 13 clips; page → `html-capture` |
-| `roblox-kit-threejs`, `roblox-kit-remotion`, `roblox-kit-hybrid` | `blocky-story` | Roblox Story | game-style | one look, three kits: pick one engine when it ships |
+| `roblox-kit-threejs`, `roblox-kit-remotion`, `roblox-kit-hybrid` | `blocky-story` | Roblox | game-style | one look, three kits: pick one engine when it ships |
 | `stickman-chikoomollian` | `stickman-story` | Stickman Story | animation-2d | 20+ episodes; needs only the `full-frame` environment |
 | `ascii-video` | `ascii-short` | ASCII Short | motion-graphics | needs `numpy` in its environment recipe |
 | `manim-video` | `math-motion` | Math Motion | explainer | needs cairo/pango, or scope it to text-only scenes |
