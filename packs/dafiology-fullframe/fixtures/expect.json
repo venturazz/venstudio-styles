@@ -1,0 +1,9 @@
+{
+  "format": "short",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "durationSec": 12,
+  "durationToleranceSec": 0.1,
+  "qc": ["G-technical"]
+}
