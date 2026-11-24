@@ -17,8 +17,9 @@ conversions should be. Written after auditing the library on 24 November 2026.
   Pillow + font DejaVu yang di-pin sha256, fixture 12 detik yang benar-benar dirender di sini (360 frame, mp4 lolos
   `check-video`). Sisanya masuk antrean konversi di bawah, sudah diperiksa engine-nya satu per satu.
 - **Yang tidak bisa:** semua yang butuh model (gambar/video provider, TTS berbayar) tetap `hermes`; Godot butuh
-  X server + library sistem (keputusan owner); GSAP belum disetujui lisensinya, jadi 11 skill
-  claude-animation-skills belum bisa jadi `html-capture`.
+  X server + library sistem (keputusan owner). Dari 11 skill claude-animation-skills, 4 memakai GSAP (lisensinya belum
+  disetujui) dan 4 memakai three.js (bisa, asal three di-vendor dan font-nya di-base64 — worker sudah menyalakan
+  SwiftShader); `/minecraft` termasuk yang three.js, jadi **bukan** terkena blokir GSAP.
 
 ## What "teruji" means in this document
 
@@ -70,14 +71,17 @@ rest becomes input the studio supplies (stills, script, timings).
 | `long-form-narrated-video`, `agnes-character-video-shorts`, `ai-video-generation`, `restyle-film-cast` | provider images/video + voice | partly | `hermes` only | research: paid or model-in-loop, never in a pack |
 | `manim-video` | Manim CE scenes | no recent render | `command` with cairo/pango, else `hermes` | text-only scope, or name the libs and let the owner decide |
 | `ascii-video` | ffmpeg + Python ASCII frames | not counted | `command` | cheap second `command` pack; needs numpy too |
-| `p5js`, `claude-animation-skills` | one page per look, frame N from a frame number | upstream only | `html-capture` | **blocked: GSAP licence** (the 11 imports animate a paused GSAP timeline) |
+| `claude-animation-skills` — the four three.js templates (`/minecraft`, `/low-poly`, `/map-route`, `/breakdown`) | one page, spec JSON in, `renderFrame(i)`, WebGL | upstream only, never rendered here | `html-capture` | three vendored as text `.js`, the `.woff2` font as base64 in a `.css`, WebGL on SwiftShader (the worker enables it). Cheapest of the imports: `hermes-minecraft` already carries the spec |
+| `claude-animation-skills` — the four GSAP templates (`/dan-koe`, `/graph`, `/minimalistic-graphics`, `/kurzgesagt`) | a paused GSAP timeline seeked per frame | upstream only | `html-capture` | **blocked: GSAP licence** (owner decision) |
+| `p5js` | a sketch page drawing frame N | partly | `html-capture` | same shape as the three.js route, after it |
 | `video-forensics`, `short-form-video-qa`, `video-continuity-rhythm`, `look-match-study`, `songsee`, `audio-stem-separation`, `gif-search` | analysis / QC / assets, no look | n/a | none | not packs; they are tools a run or the owner uses |
 | `viral-video-engagement`, `anime-short-story-order`, `songwriting-and-ai-music`, `humanizer`, `avoid-ai-writing` | writing rules, no render | n/a | none | keep as skills; they inform briefs, not pixels |
 
 ## The three conversion queues, in order of value
 
 **Queue A — `html-capture` (cheapest, highest return).** `pov-html-engine-capture`, `low-poly-station-short`,
-`threejs-3d-short`, then the two Roblox three.js kits. These already are "one page + `renderFrame(i)`" on a headless
+`threejs-3d-short`, then the two Roblox three.js kits; then the four three.js templates of the import, `/minecraft`
+first (`hermes-minecraft` already describes the spec it needs, and the page exists). These already are "one page + `renderFrame(i)`" on a headless
 Chromium with SwiftShader; the worker has exactly that page server, virtual clock and caption burn. Each needs: the page
 moved into `render/`, a `VENSTUDIO.init(props)` that reads the scene plan, `renderFrame(f)`, fonts vendored as base64 in
 a `.css` (no `.woff2`: html-capture takes text files only), three vendored as `render/vendor/three/three.min.js` plus
