@@ -30,7 +30,7 @@ at runtime and needs no GitHub token. Plan: venstudio `docs/plans/style-system.m
 | `ambient-loop` | ffmpeg-stills | trial |
 | `travel-documentary` | ffmpeg-stills | trial |
 | `story-read-aloud` | ffmpeg-stills | trial |
-| `dafiology-fullframe` | command (Pillow frames, one plate a scene) | draft |
+| `dafiology-fullframe` | command (Pillow frames, one plate a scene) | lab |
 | `three-low-poly` | command (three.js + resvg, CPU projection) | draft |
 | `hermes-research-explainer` | hermes (research only) | trial |
 | `probe-line-graph` | html-capture | lab |

@@ -96,13 +96,14 @@ linux-x64 build. That is an owner decision, not a handover.
 
 ## What this PR does, and what it does not
 
-- Adds `packs/dafiology-fullframe` (engine `command`, `draft`): the frame loop of the engine that rendered EP21–EP23,
+- Adds `packs/dafiology-fullframe` (engine `command`, `lab`): the frame loop of the engine that rendered EP21–EP23,
   plates only, with the chip, the tag and the hook. Environment `dafiology-pillow` pins Pillow 11.3.0 (six wheel
   hashes) and DejaVu 2.37 (sha256 + byte size); probe proves text shaping; render argv is the shape `three-low-poly`
   proved.
 - Adds this document and the two pack-id lines its tests expect.
-- Does **not** claim any CI run, any Muse trial, or any curation entry: nothing here has run in `job environments` yet.
-  `status: "draft"` and an empty `curation` are the honest state.
+- Claims exactly one thing beyond the code: CI run 45314894968 installed the environment on a clean runner, rendered
+  the fixture and passed `check-video`, which is the `ci-render` entry that takes the pack to `lab`. No Muse trial, no
+  `owner-review`: nothing here has run on a worker.
 - Does **not** touch the 11 `hermes` packs: changing their engine needs the converted page first, and GSAP's licence is
   the owner's call.
 

@@ -3,11 +3,13 @@
   "id": "dafiology-fullframe",
   "name": "Dafiology full-frame (one plate a scene, camera grammar)",
   "description": "One full-frame plate a scene, pushed and drifted by a measured camera, with a value-coloured readout chip, a callout tag and the hook burned in for the first 1.6 s. Frames drawn with Pillow.",
-  "version": "0.1.0",
-  "status": "draft",
+  "version": "0.1.1",
+  "status": "lab",
   "family": "narrative",
   "formats": {
-    "supported": ["short"],
+    "supported": [
+      "short"
+    ],
     "naturalFrame": "portrait"
   },
   "renderer": {
@@ -17,14 +19,28 @@
   },
   "contract": {
     "pacing": {
-      "shotSeconds": [1.5, 4],
+      "shotSeconds": [
+        1.5,
+        4
+      ],
       "hookWithinMs": 1600,
-      "cutsPerMinute": [12, 40],
+      "cutsPerMinute": [
+        12,
+        40
+      ],
       "transitionSec": 0
     },
     "onScreen": {
-      "elements": ["plate", "counter", "callout", "heading"],
-      "motionTokens": ["push", "drift"],
+      "elements": [
+        "plate",
+        "counter",
+        "callout",
+        "heading"
+      ],
+      "motionTokens": [
+        "push",
+        "drift"
+      ],
       "elementAnimation": true
     },
     "captions": {
@@ -40,19 +56,42 @@
     },
     "assets": {
       "model": "plates-and-diagrams",
-      "kinds": ["image"],
-      "allowedSources": ["upload", "hermes", "worker", "generated"],
-      "forbidKinds": ["reference-video"]
+      "kinds": [
+        "image"
+      ],
+      "allowedSources": [
+        "upload",
+        "hermes",
+        "worker",
+        "generated"
+      ],
+      "forbidKinds": [
+        "reference-video"
+      ]
     }
   },
   "portal": {
     "beatShape": "single",
     "qc": {
       "minPresentationScore": 75,
-      "gates": ["G-technical", "G-presentation"]
+      "gates": [
+        "G-technical",
+        "G-presentation"
+      ]
     },
-    "themes": ["education", "narrative", "technology"],
-    "keywords": ["dafiology", "full frame", "hud readout", "callout tag", "documentary short", "chaptered short"],
+    "themes": [
+      "education",
+      "narrative",
+      "technology"
+    ],
+    "keywords": [
+      "dafiology",
+      "full frame",
+      "hud readout",
+      "callout tag",
+      "documentary short",
+      "chaptered short"
+    ],
     "cautions": [
       "Every scene is one still: the motion has to come from the push, the drift and the breath, never from a moving picture.",
       "The readout chip is metadata, not a second subtitle. Its text stays short enough to fit one line at the top right.",
@@ -90,18 +129,40 @@
       "notes": "The first pack handed over from a look Hermes actually shipped in production, rather than a proof of the channel: the point is that a proven Hermes style now renders on a Muse worker with nothing installed by guess."
     }
   ],
-  "curation": [],
+  "curation": [
+    {
+      "date": "2026-11-24",
+      "kind": "ci-render",
+      "ref": "venturazz/venstudio-styles CI run 45314894968 (c036e2c), job environments: env-install dafiology-pillow@1.0.0 (40.2 MB, probe 'ok pillow 11.3.0 dejavu-2.37') then render-command + check-video",
+      "result": "pass",
+      "notes": "360 frames at 1080x1920@30 in 21.3 s; check-video {width 1080, height 1920, fps 30, frames 360, durationSec 12, h264, yuv420p}. Measured 1.8 s per second of video on the runner, which is why secondsPerVideoSecond is 8, not the 30 the first draft carried."
+    }
+  ],
   "workflow": {
     "recipe": "image-sequence"
   },
   "environment": {
     "id": "dafiology-pillow",
     "version": "1.0.0",
-    "platforms": ["linux-x64"],
-    "hosts": ["github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com", "pypi.org", "files.pythonhosted.org"],
+    "platforms": [
+      "linux-x64"
+    ],
+    "hosts": [
+      "github.com",
+      "objects.githubusercontent.com",
+      "release-assets.githubusercontent.com",
+      "pypi.org",
+      "files.pythonhosted.org"
+    ],
     "requires": [
-      { "tool": "python3", "min": "3.11" },
-      { "tool": "glibc", "min": "2.28" }
+      {
+        "tool": "python3",
+        "min": "3.11"
+      },
+      {
+        "tool": "glibc",
+        "min": "2.28"
+      }
     ],
     "steps": [
       {
@@ -123,21 +184,49 @@
       }
     ],
     "probe": {
-      "argv": ["python", "{packDir}/render/probe.py", "--env", "{envDir}"],
+      "argv": [
+        "python",
+        "{packDir}/render/probe.py",
+        "--env",
+        "{envDir}"
+      ],
       "timeoutSec": 90,
       "exitCode": 0,
       "stdout": "^ok pillow 11\\.3\\.0 dejavu-2\\.37"
     },
     "render": {
-      "argv": ["python", "{packDir}/render/frames.py", "--props", "{props}", "--out", "{out}", "--env", "{envDir}", "--in", "{inDir}"],
-      "secondsPerVideoSecond": 30,
+      "argv": [
+        "python",
+        "{packDir}/render/frames.py",
+        "--props",
+        "{props}",
+        "--out",
+        "{out}",
+        "--env",
+        "{envDir}",
+        "--in",
+        "{inDir}"
+      ],
+      "secondsPerVideoSecond": 8,
       "output": "png-frames",
       "captions": "worker",
       "audio": "worker"
     },
     "licences": [
-      { "tool": "pillow", "version": "11.3.0", "licence": "MIT-CMU", "source": "https://pypi.org/project/pillow/11.3.0/", "notes": "wheel digests from the PyPI JSON API" },
-      { "tool": "dejavu-fonts", "version": "2.37", "licence": "Bitstream Vera Fonts Copyright", "source": "https://github.com/dejavu-fonts/dejavu-fonts/releases/tag/version_2_37", "notes": "sha256 and size measured from the release asset" }
+      {
+        "tool": "pillow",
+        "version": "11.3.0",
+        "licence": "MIT-CMU",
+        "source": "https://pypi.org/project/pillow/11.3.0/",
+        "notes": "wheel digests from the PyPI JSON API"
+      },
+      {
+        "tool": "dejavu-fonts",
+        "version": "2.37",
+        "licence": "Bitstream Vera Fonts Copyright",
+        "source": "https://github.com/dejavu-fonts/dejavu-fonts/releases/tag/version_2_37",
+        "notes": "sha256 and size measured from the release asset"
+      }
     ]
   }
 }

@@ -41,10 +41,10 @@ the ones that made the look recognisable in a thumbnail.
 
 ## Status
 
-`draft`. Nothing has run in CI or on a worker yet: the fixture renders here (360 frames, 1 m 14 s on 4 ARM cores,
-about 6 s per second of video), and the recipe, probe and render argv are the shape `three-low-poly` proved. A CI run
-of job `environments` adds the `ci-render` entry and moves it to `lab`; a Muse trial after that is what could make it
-`trial`.
+`lab`. CI renders it now: run 45314894968 installed `env:dafiology-pillow@1.0.0` on a clean runner (40.2 MB, probe
+`ok pillow 11.3.0 dejavu-2.37`), ran the pack's argv and `check-video` matched the fixture — 360 frames at 1080×1920,
+21.3 s, 1.8 s per second of video, hence `secondsPerVideoSecond: 8`. Locally the same fixture takes 1 m 14 s on 4 ARM
+cores. A Muse trial is what would make it `trial`; nothing here has run on a worker yet.
 
 Two things to look at before that trial:
 
