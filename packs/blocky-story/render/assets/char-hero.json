@@ -1,0 +1,13 @@
+{
+  "name": "Rangga",
+  "skin": "#8D5524",
+  "shirt": "#6C5CE7",
+  "pants": "#2D3436",
+  "hair": "cap",
+  "hair_color": "#D63031",
+  "hair_under": "#2C1B10",
+  "face": "hero",
+  "extras": ["badge:#F1C40F"],
+  "sleeves": "short",
+  "scale": 1.02
+}

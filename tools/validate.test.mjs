@@ -32,6 +32,7 @@ test("every pack in this repo is valid", () => {
   assert.deepEqual(issues, []);
   assert.deepEqual(packs.map((p) => p.id), [
     "ambient-loop",
+    "blocky-story",
     "branching-lines",
     "designed-explainer",
     "documentary",
@@ -337,6 +338,7 @@ test("workflow: every pack names its recipe; stills and the explainer are image-
     "travel-documentary": "image-sequence",
     "low-poly-shapes": "image-sequence",
     "full-frame": "image-sequence",
+    "blocky-story": "scene-spec",
     "line-graph": "scene-spec",
     "minimal-line-art": "scene-spec",
     "probe-line-graph": "scene-spec",

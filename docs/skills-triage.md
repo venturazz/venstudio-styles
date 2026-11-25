@@ -121,3 +121,31 @@ linux-x64 build. That is an owner decision, not a handover.
 4. Measure `secondsPerVideoSecond` on the target hardware, and the peak disk (this pack: ~66 MB per second of video at
    1080×1920, because PNG frames of photo plates are ~2.2 MB each).
 5. Render the fixture locally first, `check-video` it, then let CI install the environment as a non-root user.
+## The conversion queue after 25 November
+
+`voxel-build` (Minecraft) and `blocky-story` (Roblox) now render on a worker with `html-capture` and have CI render
+evidence; the rest of the library is queued in the order below. The pattern is the same one those two established, so the
+cost per look is mostly the asset adapter, not the engine:
+
+| Skill | Style id | Engine | State | What is missing |
+| --- | --- | --- | --- | --- |
+| `roblox-kit-threejs` / `-remotion` / `-hybrid` | `blocky-story` | `html-capture` | pack `draft`, fixture renders on this host | CI render, then `lab`; the three kit exports still live only on this box |
+| `threejs-3d-short` | `3d-film` | `html-capture` | next | its page needs the `VENSTUDIO` contract and the scene spec folded into props; 13 clips of evidence exist |
+| `pov-html-engine-capture` | `pov-short` | `html-capture` | next | same adapter as above; the page already draws one frame per request |
+| `low-poly-station-short` | `transit-station` | `command` | queue | a Python renderer with a 15-clip history: needs a pinned environment (numpy/pillow) and a fixture |
+| `godot-sprite-film` | `sprite-film` | `command` | blocked | Godot linux-x64 + Xvfb + libGL. **This host is aarch64 and cannot run it**, so it can only be proved on the x64 CI runner — an owner decision, not a code problem |
+| `godot-toon-3d-short`, `sprite-video-production` | `toon-3d` | `command` | blocked | the same environment, plus 3D scene cost |
+| `stickman-chikoomollian` | `stickman-story` | `command` | queue | renders with the same environment `full-frame` already installs; the engine (`ep01_robotfist/engine.py`) is story-agnostic |
+| `ascii-video` | `ascii-short` | `command` | queue | needs `numpy` in the environment recipe |
+| `manim-video` | `math-motion` | `command` | queue | needs cairo/pango, or scope it to text-only scenes |
+| `flat-vector-explainer-video`, `narrated-video-from-images`, `photoreal-cutout-puppet` | `explainer-flat-vector`, `documentary`, `full-frame` | — | done | already worker packs |
+| `cartoon-3d-short`, `agnes-character-video-shorts`, `long-form-narrated-video`, `ai-video-generation` | `cartoon-3d`, `character-short`, `narrated-long`, `generated-video` | `hermes` | stays research | a paid image/video model is in the path; no worker engine can absorb it without a bill |
+| `real-voxel-game-assets` | — | — | asset pipeline | feeds `voxel-build`; never a look on its own |
+| `restyle-film-cast`, `cast-2d-billboards`, `look-match-study`, `short-form-video-qa`, `video-forensics`, `video-continuity-rhythm`, `songsee`, `viral-video-engagement`, `humanizer`, `avoid-ai-writing` | — | — | technique, not a look | no style name, by design |
+
+Two rules the queue keeps:
+
+- **One look, one style.** Three Roblox kits became one pack; the Godot sprite and toon skills stay two, because they look
+  different (flat sprites vs 3D scenes), not because they use different tools.
+- **No status without evidence.** A pack enters as `draft`, becomes `lab` only when CI renders its fixture, and `trial`
+  when a run exists in Studio. The `curation` array names the run; `tools/validate.mjs` refuses the claim without it.

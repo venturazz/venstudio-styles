@@ -1,0 +1,148 @@
+{
+  "format": "short",
+  "width": 1080,
+  "height": 1920,
+  "fps": 24,
+  "engine": "html-capture",
+  "transitionSec": 0,
+  "shots": [
+    {
+      "shotRef": "shot-01",
+      "assetId": "asset-shot-01",
+      "seconds": 2,
+      "motion": "zoom-in",
+      "beat": "two figures in the plaza"
+    },
+    {
+      "shotRef": "shot-02",
+      "assetId": "asset-shot-02",
+      "seconds": 2,
+      "motion": "pan-left",
+      "beat": "one of them claps"
+    },
+    {
+      "shotRef": "shot-03",
+      "assetId": "asset-shot-03",
+      "seconds": 2,
+      "motion": "zoom-out",
+      "beat": "the other one gives up"
+    }
+  ],
+  "narrationAssetId": "asset-narration",
+  "narrationSec": 6,
+  "durationSec": 6,
+  "targetLufs": -14,
+  "inputs": [
+    "asset-shot-01",
+    "asset-shot-02",
+    "asset-shot-03",
+    "asset-narration"
+  ],
+  "captions": [
+    {
+      "start": 0,
+      "end": 2,
+      "text": "Di kota ini semua orang membeku"
+    },
+    {
+      "start": 2,
+      "end": 4,
+      "text": "Kalau kamu bertepuk tangan sekali"
+    },
+    {
+      "start": 4,
+      "end": 6,
+      "text": "Dan mereka lupa caranya berjalan"
+    }
+  ],
+  "scenePlan": {
+    "version": 1,
+    "engine": "html-capture",
+    "template": "blocky-story",
+    "family": "game-style",
+    "width": 1080,
+    "height": 1920,
+    "fps": 24,
+    "transitionSec": 0,
+    "scenes": [
+      {
+        "shotRef": "shot-01",
+        "seconds": 2,
+        "beatRole": "hook",
+        "elements": [
+          {
+            "kind": "diagram",
+            "text": "plaza"
+          },
+          {
+            "kind": "heading",
+            "text": "Semua orang membeku"
+          }
+        ],
+        "tokens": [
+          "push"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 48,
+            "fps": 24
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-02",
+        "seconds": 2,
+        "beatRole": "body",
+        "elements": [
+          {
+            "kind": "diagram",
+            "text": "schoolyard"
+          },
+          {
+            "kind": "heading",
+            "text": "Bertepuk tangan sekali"
+          }
+        ],
+        "tokens": [
+          "drift"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 48,
+            "fps": 24
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-03",
+        "seconds": 2,
+        "beatRole": "outro",
+        "elements": [
+          {
+            "kind": "diagram",
+            "text": "plaza"
+          },
+          {
+            "kind": "heading",
+            "text": "Lupa caranya berjalan"
+          }
+        ],
+        "tokens": [
+          "pull"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 48,
+            "fps": 24
+          }
+        ]
+      }
+    ]
+  }
+}
