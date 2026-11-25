@@ -5,6 +5,9 @@
   "description": "A white 3D city, a route that draws itself while the camera follows, a pin drop, an ETA that counts down and a destination card. Hermes renders it with /map-route.",
   "version": "0.2.0",
   "status": "trial",
+  "formerly": [
+    "hermes-map-route"
+  ],
   "family": "animation-3d",
   "formats": {
     "supported": [

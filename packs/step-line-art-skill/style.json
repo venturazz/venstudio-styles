@@ -5,6 +5,10 @@
   "description": "Thin outlined steps rise one by one, a white dot hops up them and an orbit draws around it at the top, with one quiet lowercase line. Hermes renders it with /minimalistic-graphics.",
   "version": "0.2.0",
   "status": "retired",
+  "formerly": [
+    "hermes-minimalistic-graphics"
+  ],
+  "upgradedTo": "minimal-line-art",
   "family": "motion-graphics",
   "formats": {
     "supported": [

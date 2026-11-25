@@ -5,6 +5,10 @@
   "description": "The original research trial: Hermes renders a cottage with the /minecraft skill installed there. Retired because a Hermes render is never published; voxel-build renders the same look on a worker.",
   "version": "0.2.0",
   "status": "retired",
+  "formerly": [
+    "hermes-minecraft"
+  ],
+  "upgradedTo": "voxel-build",
   "family": "game-style",
   "formats": {
     "supported": [

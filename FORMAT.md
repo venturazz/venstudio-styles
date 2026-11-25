@@ -28,6 +28,8 @@ packs/<id>/
 | `version` | Semver. Bump it whenever anything in the pack changes; workers report `pack:<id>@<version>` and the portal routes renders by it. |
 | `status` | `draft`, `lab`, `trial`, `proven`, `listed` or `retired` (see CONTRIBUTING.md). |
 | `family` | One of the portal's families (`explainer`, `documentary`, `narrative`, ...). |
+| `formerly` | Optional. The old style ids this pack used to have, so history keeps resolving after a rename (`["hermes-minecraft"]`). Resolution only: it never adds a second entry to the picker, and it may not collide with a live id or another pack's `formerly`. |
+| `upgradedTo` | Optional, retired packs only: the live pack that replaced this one (`voxel-build`). Studio reads it as "replaced by X, start a new run"; a revision stays on the pack the run started with. |
 | `formats` | `supported`: `short` and/or `long`. `naturalFrame`: the frame the art direction was measured on (`landscape`, `portrait`, `both`). |
 | `renderer` | `engine` (a key of the portal's ENGINES: `ffmpeg-stills`, `remotion-2d`, `html-capture`, `hermes`, `command`, ...), `minWorkerVersion` (the worker that can report this pack: 0.9.0 or later, 0.10.0 or later for html-capture), `composition` (the Remotion composition id; `null` for every other engine), `drawsCaptions` (html-capture only, required there: `true` when the page draws the captions it is given, `false` when the worker burns them with the job's caption style). |
 | `contract.pacing` | `shotSeconds` [min, max], `hookWithinMs` (first cut of a short), `cutsPerMinute` [min, max], `transitionSec` (cross-fade). |
@@ -79,6 +81,8 @@ Rules the validator applies beyond the shape:
     reference another host (`src="https://..."`, `url(//...)`, `@import`); a library is vendored under
     `render/vendor/<name>/` with its licence file beside it.
 - No two packs share an id or a composition.
+- Renaming a pack means adding the old id to `formerly` of the pack that replaced it, in the same commit: a run
+  pins `pack:<id>@<version>`, so an old id is never re-used by a different look and never simply disappears.
 - Size limits: 200 files, 1 MB a file, 5 MB a pack (the worker's bundle limits).
 
 ## Workflows
