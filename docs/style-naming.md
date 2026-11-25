@@ -34,7 +34,7 @@ Generated from `packs/*/style.json`; `node tools/validate.mjs` is the authority 
 | id | name | family | engine | status |
 | --- | --- | --- | --- | --- |
 | `ambient-loop` | Ambient Loop | ambient | ffmpeg-stills | trial |
-| `blocky-story` | Roblox | game-style | html-capture | draft |
+| `blocky-story` | Roblox | game-style | html-capture | lab |
 | `branching-lines` | Dan Koe | motion-graphics | hermes (research) | trial |
 | `designed-explainer` | Designed Explainer | explainer | html-capture | trial |
 | `documentary` | Documentary | documentary | ffmpeg-stills | trial |

@@ -4,7 +4,7 @@
   "name": "Roblox",
   "description": "Blocky figures in bright code-built places: a cast of drawn-faced characters, eight locations, hard cuts and a camera that pushes, pulls, orbits or cranes. Every shot has a gesture and a caption band drawn from the voice's own word times.",
   "version": "0.1.0",
-  "status": "draft",
+  "status": "lab",
   "family": "game-style",
   "formats": {
     "supported": [
@@ -127,7 +127,15 @@
       "notes": "The name was reserved before the pack existed. The engine choice is an implementation detail: html-capture, because the kit already renders one frame per request."
     }
   ],
-  "curation": [],
+  "curation": [
+    {
+      "date": "2026-11-25",
+      "kind": "ci-render",
+      "ref": "venturazz/venstudio-styles CI run 45535626586 (branch feat/blocky-story, commit 1185c96), job remotion: renders every html-capture pack's fixture with the vendored worker in Chrome Headless Shell, then checks size, fps, duration and frame count",
+      "result": "pass",
+      "notes": "Rendered at 1080x1920, 24 fps, 6 s, 144 frames. The page builds the Roblox kit's own scenes from code and draws its own faces; the run proves the pack renders in CI, not that anyone has watched a full film yet."
+    }
+  ],
   "workflow": {
     "recipe": "scene-spec",
     "review": [
