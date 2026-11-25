@@ -5,6 +5,9 @@
   "description": "PS1/N64-era low-poly 3D: chunky pixels, wobbly vertices, dithering, flat warm light and small yellow captions. Hermes renders it with /low-poly.",
   "version": "0.2.0",
   "status": "trial",
+  "formerly": [
+    "hermes-low-poly"
+  ],
   "family": "animation-3d",
   "formats": {
     "supported": [

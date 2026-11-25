@@ -1,10 +1,13 @@
 {
   "format": 1,
   "id": "research-render",
-  "name": "Research Render",
+  "name": "Hermes render (research only)",
   "description": "Hermes renders the whole video with its own tools from a skill brief it writes from the approved script. For trials and research, never for publishing.",
-  "version": "0.2.0",
-  "status": "retired",
+  "version": "0.2.2",
+  "status": "trial",
+  "formerly": [
+    "hermes-research-explainer"
+  ],
   "family": "explainer",
   "formats": {
     "supported": [

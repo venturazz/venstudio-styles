@@ -163,9 +163,9 @@ const PATH_RE = /^[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$/;
 /** A Hermes skill as it is invoked, e.g. "/graph". */
 const SKILL_RE = /^\/[a-z0-9][a-z0-9-]{0,62}$/;
 
-const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "family", "formats", "renderer", "contract", "portal", "fixture", "provenance", "curation", "hermes", "workflow", "design", "environment"];
+const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "family", "formats", "renderer", "contract", "portal", "fixture", "provenance", "curation", "hermes", "workflow", "design", "environment", "formerly", "upgradedTo"];
 /** Top-level fields a pack may leave out. */
-export const OPTIONAL_TOP_KEYS = ["hermes", "workflow", "design", "environment"];
+export const OPTIONAL_TOP_KEYS = ["hermes", "workflow", "design", "environment", "formerly", "upgradedTo"];
 const DESIGN_KEYS = ["brief", "palette", "typography", "layout"];
 const HERMES_KEYS = ["skill", "aliases", "mode", "voice", "input", "output", "variantOf"];
 const WORKFLOW_KEYS = ["recipe", "review"];
@@ -264,6 +264,22 @@ export function validateStyle(style, { dirName, files } = {}) {
   if (typeof style.version !== "string" || !SEMVER_RE.test(style.version)) issues.push("version must be semver MAJOR.MINOR.PATCH");
   if (!STATUSES.includes(style.status)) issues.push(`status must be one of ${STATUSES.join(", ")}`);
   if (!FAMILIES.includes(style.family)) issues.push(`family must be one of ${FAMILIES.join(", ")}`);
+
+  // Aliases: `formerly` keeps an old id resolvable after a rename; never a second pack (validateRepo checks collisions).
+  if (style.formerly !== undefined) {
+    if (!Array.isArray(style.formerly) || style.formerly.length === 0 || style.formerly.length > 8)
+      issues.push("formerly must be a list of 1..8 old ids");
+    else
+      for (const f of style.formerly) {
+        if (typeof f !== "string" || !ID_RE.test(f)) issues.push("formerly entries must be lowercase letters, digits and dashes (2..63 characters)");
+        else if (f === style.id) issues.push("formerly must not name the pack itself");
+      }
+  }
+  if (style.upgradedTo !== undefined) {
+    if (typeof style.upgradedTo !== "string" || !ID_RE.test(style.upgradedTo)) issues.push("upgradedTo must be a pack id");
+    else if (style.upgradedTo === style.id) issues.push("upgradedTo must not name the pack itself");
+    else if (style.status !== "retired") issues.push("upgradedTo is only for a retired pack: the live pack that replaced it");
+  }
 
   if (!isRecord(style.formats)) issues.push("formats must be an object");
   else {
@@ -1049,6 +1065,7 @@ export function validateRepo(root) {
       if (v === d) issues.push(`packs/${d}: hermes.variantOf names the pack itself`);
     }
   });
+  issues.push(...aliasIssues(packsDir, dirs, packs));
   for (const p of packs) issues.push(...p.issues);
   return { packs, issues };
 }
@@ -1069,6 +1086,38 @@ function readComposition(dir) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Alias checks only a whole repo can make: an old id in `formerly` may not collide with a live pack id or with
+ * another pack's `formerly`, and `upgradedTo` must name a pack that is still live.
+ */
+function aliasIssues(packsDir, dirs, packs) {
+  const issues = [];
+  const styleOf = new Map();
+  for (const d of dirs) {
+    try {
+      styleOf.set(d, JSON.parse(readFileSync(path.join(packsDir, d, "style.json"), "utf8")));
+    } catch {
+      // validatePackDir already reported the unreadable manifest
+    }
+  }
+  const claimed = new Map();
+  for (const [d, s] of styleOf) {
+    const former = Array.isArray(s.formerly) ? s.formerly : [];
+    for (const f of former) {
+      if (typeof f !== "string" || !ID_RE.test(f)) continue;
+      if (styleOf.has(f)) issues.push(`packs/${d}: formerly "${f}" is already the id of a pack here`);
+      if (claimed.has(f)) issues.push(`formerly "${f}" is claimed by packs/${claimed.get(f)} and packs/${d}`);
+      claimed.set(f, d);
+    }
+    if (typeof s.upgradedTo === "string" && ID_RE.test(s.upgradedTo)) {
+      const target = styleOf.get(s.upgradedTo);
+      if (!target) issues.push(`packs/${d}: upgradedTo names "${s.upgradedTo}", which is not a pack here`);
+      else if (target.status === "retired") issues.push(`packs/${d}: upgradedTo names "${s.upgradedTo}", which is retired too`);
+    }
+  }
+  return issues;
 }
 
 /** Two packs with one id, or two Remotion packs with one composition id, would shadow each other on a worker. */

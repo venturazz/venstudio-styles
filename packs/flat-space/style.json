@@ -5,6 +5,9 @@
   "description": "Deep navy space with twinkling stars, flat planets lit from one side and bright rounded label tags, one white caption low in the frame. Hermes renders it with /kurzgesagt.",
   "version": "0.2.0",
   "status": "trial",
+  "formerly": [
+    "hermes-kurzgesagt"
+  ],
   "family": "animation-2d",
   "formats": {
     "supported": [

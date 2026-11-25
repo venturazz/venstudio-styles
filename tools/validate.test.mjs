@@ -107,16 +107,19 @@ const RESEARCH = { date: "2026-11-22", kind: "research-source", ref: "https://gi
 test("research-source: accepted for a hermes pack at lab or trial, required there, never for other engines, never above trial", () => {
   const g = load("line-graph-skill");
   assert.deepEqual(V.validateStyle(g, { dirName: "line-graph-skill" }), []);
+  // Retired is what lets it name its replacement: changing its status drops upgradedTo, the alias stays.
+  const base = clone(g);
+  delete base.upgradedTo;
   for (const status of ["lab", "trial"]) {
-    assert.deepEqual(V.validateStyle({ ...clone(g), status, curation: [RESEARCH] }), [], status);
-    assert.ok(has(V.validateStyle({ ...clone(g), status, curation: [] }), /hermes pack needs a research-source entry with result "pass"/), `${status} without evidence`);
-    assert.ok(has(V.validateStyle({ ...clone(g), status, curation: [{ ...RESEARCH, result: "note" }] }), /needs a research-source entry/), `${status} with a note only`);
+    assert.deepEqual(V.validateStyle({ ...clone(base), status, curation: [RESEARCH] }), [], status);
+    assert.ok(has(V.validateStyle({ ...clone(base), status, curation: [] }), /hermes pack needs a research-source entry with result "pass"/), `${status} without evidence`);
+    assert.ok(has(V.validateStyle({ ...clone(base), status, curation: [{ ...RESEARCH, result: "note" }] }), /needs a research-source entry/), `${status} with a note only`);
   }
-  assert.deepEqual(V.validateStyle({ ...clone(g), status: "draft", curation: [] }), [], "a hermes draft needs no evidence");
+  assert.deepEqual(V.validateStyle({ ...clone(base), status: "draft", curation: [] }), [], "a hermes draft needs no evidence");
   // Never above trial, research-source or not.
   for (const status of ["proven", "listed"]) {
     const curation = [RESEARCH, { date: "2026-11-22", kind: "owner-review", ref: "PR", result: "approved", notes: "" }, { date: "2026-11-22", kind: "trial-run", ref: "run", result: "pass", notes: "" }];
-    assert.ok(has(V.validateStyle({ ...clone(g), status, curation }), /can be at most trial, never/), status);
+    assert.ok(has(V.validateStyle({ ...clone(base), status, curation }), /can be at most trial, never/), status);
   }
   // Another engine: research-source is refused, and it never stands in for the CI render.
   const html = load("line-graph");

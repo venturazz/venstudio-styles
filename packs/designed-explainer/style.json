@@ -5,6 +5,9 @@
   "description": "Research only: Hermes writes the HTML page for each video from this brief, the owner approves still frames, then the worker captures it.",
   "version": "0.1.0",
   "status": "trial",
+  "formerly": [
+    "hermes-designed-explainer"
+  ],
   "family": "explainer",
   "formats": {
     "supported": [
