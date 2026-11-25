@@ -1,0 +1,145 @@
+{
+  "format": 1,
+  "id": "blocky-story",
+  "name": "Roblox",
+  "description": "Blocky figures in bright code-built places: a cast of drawn-faced characters, eight locations, hard cuts and a camera that pushes, pulls, orbits or cranes. Every shot has a gesture and a caption band drawn from the voice's own word times.",
+  "version": "0.1.0",
+  "status": "lab",
+  "family": "game-style",
+  "formats": {
+    "supported": [
+      "short"
+    ],
+    "naturalFrame": "portrait"
+  },
+  "renderer": {
+    "engine": "html-capture",
+    "minWorkerVersion": "0.12.0",
+    "composition": null,
+    "drawsCaptions": true
+  },
+  "contract": {
+    "pacing": {
+      "shotSeconds": [
+        1.5,
+        6
+      ],
+      "hookWithinMs": 1200,
+      "cutsPerMinute": [
+        12,
+        35
+      ],
+      "transitionSec": 0
+    },
+    "onScreen": {
+      "elements": [
+        "diagram",
+        "heading"
+      ],
+      "motionTokens": [
+        "push",
+        "pull",
+        "drift"
+      ],
+      "elementAnimation": true
+    },
+    "captions": {
+      "required": true,
+      "spec": "caption-spec-v1",
+      "safeAreaPct": 8
+    },
+    "audio": {
+      "narrated": true,
+      "targetLufs": -14,
+      "maxTruePeakDb": -1,
+      "musicPolicy": "none"
+    },
+    "assets": {
+      "model": "plates-and-diagrams",
+      "kinds": [
+        "other"
+      ],
+      "allowedSources": [
+        "upload",
+        "hermes",
+        "muse",
+        "worker",
+        "licensed",
+        "generated"
+      ],
+      "forbidKinds": [
+        "reference-video"
+      ]
+    }
+  },
+  "portal": {
+    "beatShape": "single",
+    "qc": {
+      "minPresentationScore": 75,
+      "gates": [
+        "G-technical",
+        "G-presentation",
+        "G-assets",
+        "G-compliance",
+        "G-claims"
+      ]
+    },
+    "themes": [
+      "kids",
+      "gaming",
+      "school"
+    ],
+    "keywords": [
+      "roblox",
+      "blocky",
+      "characters",
+      "story"
+    ],
+    "cautions": [
+      "The pack builds its own pixels: it asks the studio for no pictures. Studio's planner may still plan stills until the asset model grows a \"none\" value; the render ignores them.",
+      "Not affiliated with Roblox Corporation. The figures are the kit's own blocky characters and its own drawn faces; no Roblox asset, avatar, logo or game is used.",
+      "The cast is a small fixed set of presets, so a script longer than eight shots reuses faces. Keep films to a handful of characters.",
+      "Captions are drawn by the kit from the voice's word times, inside the lower band. Do not also burn captions on the worker or they will double."
+    ],
+    "sources": []
+  },
+  "fixture": {
+    "payload": "fixtures/payload.json",
+    "expect": "fixtures/expect.json"
+  },
+  "provenance": [
+    {
+      "type": "owner-note",
+      "ref": "the Roblox Claude kit (/opt/data/robloxkit): engine/, web/engine/{core,chars,props,acting,sets,studio}.js, characters/hero.json, assets/faces",
+      "licence": "owner — the kit is this studio's own work (package.json private: true); the art is drawn by its code",
+      "notes": "Vendored into render/assets/engine and its faces inlined as data URLs. One edit to studio.load(): the choreography comes from a hook instead of /video/shots.js. The sets, characters, camera language and caption drawing are the kit's, unchanged."
+    },
+    {
+      "type": "repo",
+      "ref": "three.js 0.170.0 (three.module.min.js) and its examples/jsm/geometries/RoundedBoxGeometry.js, from the kit's node_modules",
+      "licence": "MIT (Three.js Authors)",
+      "notes": "Vendored rather than fetched: the capture sandbox has no network. The kit's own import of 'three' is rewritten to the vendored file."
+    },
+    {
+      "type": "owner-note",
+      "ref": "venturazz/venstudio-styles docs/style-naming.md: one look, one style — three Roblox kits (threejs, remotion, hybrid) are this one style",
+      "licence": "owner",
+      "notes": "The name was reserved before the pack existed. The engine choice is an implementation detail: html-capture, because the kit already renders one frame per request."
+    }
+  ],
+  "curation": [
+    {
+      "date": "2026-11-25",
+      "kind": "ci-render",
+      "ref": "venturazz/venstudio-styles CI run 45535626586 (branch feat/blocky-story, commit 1185c96), job remotion: renders every html-capture pack's fixture with the vendored worker in Chrome Headless Shell, then checks size, fps, duration and frame count",
+      "result": "pass",
+      "notes": "Rendered at 1080x1920, 24 fps, 6 s, 144 frames. The page builds the Roblox kit's own scenes from code and draws its own faces; the run proves the pack renders in CI, not that anyone has watched a full film yet."
+    }
+  ],
+  "workflow": {
+    "recipe": "scene-spec",
+    "review": [
+      "scene-spec"
+    ]
+  }
+}
