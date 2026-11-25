@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>blocky-story</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #000;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- page.js is render/adapter.js with the kit and three.js bundled into one classic script; see tools/bundle-blocky-page.mjs.
+         The sources beside it — adapter.js, cast.js and assets/engine/*.js — are the reviewable truth. -->
+    <!-- The kit's face atlases as data URLs: one classic script per chunk, loaded before the page. -->
+    <script src="assets/faces-0.js"></script>
+    <script src="assets/faces-1.js"></script>
+    <script src="assets/faces-2.js"></script>
+    <script src="assets/faces-3.js"></script>
+    <script src="assets/faces-4.js"></script>
+    <script src="assets/faces-5.js"></script>
+    <script src="page.js"></script>
+  </body>
+</html>

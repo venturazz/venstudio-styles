@@ -33,30 +33,32 @@ Generated from `packs/*/style.json`; `node tools/validate.mjs` is the authority 
 
 | id | name | family | engine | status |
 | --- | --- | --- | --- | --- |
+| `ambient-loop` | Ambient Loop | ambient | ffmpeg-stills | trial |
+| `blocky-story` | Roblox | game-style | html-capture | lab |
+| `branching-lines` | Dan Koe | motion-graphics | hermes (research) | trial |
 | `designed-explainer` | Designed Explainer | explainer | html-capture | trial |
-| `explainer-flat-vector` | Flat Vector | explainer | remotion-2d | trial |
-| `research-render` | Research Render | explainer | hermes (research) | retired |
 | `documentary` | Documentary | documentary | ffmpeg-stills | trial |
-| `travel-documentary` | Travel Doc | documentary | ffmpeg-stills | trial |
-| `horror-narration` | Horror Story | narrative | ffmpeg-stills | trial |
-| `mystery-narration` | Mystery Story | narrative | ffmpeg-stills | trial |
-| `full-frame` | Puppet | narrative | command | lab |
-| `story-read-aloud` | Read-Aloud | narrative | ffmpeg-stills | trial |
-| `flat-space` | Kurzgesagt | animation-2d | hermes (research) | trial |
-| `stick-figure` | Stick Figure | animation-2d | hermes (research) | trial |
+| `explainer-flat-vector` | Flat Vector | explainer | remotion-2d | trial |
 | `exploded-view` | Exploded View | animation-3d | hermes (research) | trial |
+| `flat-space` | Kurzgesagt | animation-2d | hermes (research) | trial |
+| `full-frame` | Puppet | narrative | command | lab |
+| `horror-narration` | Horror Story | narrative | ffmpeg-stills | trial |
+| `line-graph-skill` | Line Graph (Skill) | motion-graphics | hermes (research) | retired |
+| `line-graph` | Line Graph | motion-graphics | html-capture | trial |
 | `low-poly-shapes` | Low-Poly 3D | animation-3d | command | draft |
 | `map-route` | Map Route | animation-3d | hermes (research) | trial |
-| `ps1-low-poly` | PS1 Retro | animation-3d | hermes (research) | trial |
-| `what-if-3d` | Zach 3D Films | animation-3d | hermes (research) | trial |
-| `branching-lines` | Dan Koe | motion-graphics | hermes (research) | trial |
 | `minimal-line-art` | Line Art | motion-graphics | html-capture | trial |
-| `line-graph` | Line Graph | motion-graphics | html-capture | trial |
+| `mystery-narration` | Mystery Story | narrative | ffmpeg-stills | trial |
 | `probe-line-graph` | Line Graph (Probe) | motion-graphics | html-capture | lab |
-| `line-graph-skill` | Line Graph (Skill) | motion-graphics | hermes (research) | retired |
+| `ps1-low-poly` | PS1 Retro | animation-3d | hermes (research) | trial |
+| `research-render` | Research Render | explainer | hermes (research) | retired |
 | `step-line-art-skill` | Step Line Art (Skill) | motion-graphics | hermes (research) | retired |
-| `voxel-build` | Minecraft | game-style | hermes (research) | trial |
-| `ambient-loop` | Ambient Loop | ambient | ffmpeg-stills | trial |
+| `stick-figure` | Stick Figure | animation-2d | hermes (research) | trial |
+| `story-read-aloud` | Read-Aloud | narrative | ffmpeg-stills | trial |
+| `travel-documentary` | Travel Doc | documentary | ffmpeg-stills | trial |
+| `voxel-build-skill` | Minecraft (skill) | game-style | hermes (research) | retired |
+| `voxel-build` | Minecraft | game-style | html-capture | lab |
+| `what-if-3d` | Zach 3D Films | animation-3d | hermes (research) | trial |
 
 Retired packs stay in the repo so old runs remain explainable, but they never appear in New Video. `line-graph-skill`
 and `step-line-art-skill` show the same look as `line-graph` and `minimal-line-art`, which render it on a worker with no
@@ -70,20 +72,22 @@ second one; the id is not valid until `packs/<id>/` exists.
 | Skill | Style id | Name | Family | Why not yet |
 | --- | --- | --- | --- | --- |
 | `pov-html-engine-capture` | `pov-short` | POV Short | narrative | page exists, needs `window.VENSTUDIO` + a fixture |
-| `/minecraft` | `voxel-build` | Minecraft Voxel | game-style | pack exists at trial on engine `hermes`; the page only needs three + woff2 as text, WebGL is already on SwiftShader |
 | `low-poly-station-short` | `transit-station` | Transit Station | animation-3d | 15 clips; page → `html-capture` |
 | `threejs-3d-short` | `3d-film` | 3D Film | animation-3d | 13 clips; page → `html-capture` |
-| `roblox-kit-threejs`, `roblox-kit-remotion`, `roblox-kit-hybrid` | `blocky-story` | Roblox | game-style | one look, three kits: pick one engine when it ships |
 | `stickman-chikoomollian` | `stickman-story` | Stickman Story | animation-2d | 20+ episodes; needs only the `full-frame` environment |
 | `ascii-video` | `ascii-short` | ASCII Short | motion-graphics | needs `numpy` in its environment recipe |
 | `manim-video` | `math-motion` | Math Motion | explainer | needs cairo/pango, or scope it to text-only scenes |
-| `godot-sprite-film` | `sprite-film` | Sprite Film | animation-2d | needs Xvfb + libGL + Godot linux-x64 |
-| `godot-toon-3d-short`, `sprite-video-production` | `toon-3d` | Toon 3D | animation-3d | same Godot requirement |
+| `godot-sprite-film` | `sprite-film` | Sprite Film | animation-2d | needs a `command` environment with Godot + Xvfb + Mesa; the arm64 build has already rendered a 227 s film here, CI needs the x64 build pinned |
+| `godot-toon-3d-short`, `sprite-video-production` | `toon-3d` | Toon 3D | animation-3d | same Godot environment, 3D scenes: heavier per frame than the sprite film |
 | `cartoon-3d-short` | `cartoon-3d` | Cartoon 3D | animation-3d | uses a paid image model |
 | `agnes-character-video-shorts` | `character-short` | Character Short | narrative | paid model |
 | `long-form-narrated-video` | `narrated-long` | Narrated Long | narrative | paid model |
 | `ai-video-generation` | `generated-video` | Generated Video | animation-3d | paid provider |
 | `real-voxel-game-assets` | `voxel-assets` | Minecraft Assets | game-style | an asset pipeline, not a look; feeds `voxel-build` |
+
+Two of these reservations became packs on 25 November and are no longer in the table above: `voxel-build` (Minecraft,
+`html-capture`, `lab`) and `blocky-story` (Roblox, `html-capture`, `draft`). The names did not change when they shipped,
+which is the point of reserving them.
 
 Not every skill is a look: `video-forensics`, `short-form-video-qa`, `video-continuity-rhythm`, `songsee` and
 `viral-video-engagement` are analysis tools or writing rules. They get no style name.
