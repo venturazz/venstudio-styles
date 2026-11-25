@@ -2,9 +2,9 @@
   "format": "short",
   "width": 1080,
   "height": 1920,
-  "fps": 30,
-  "durationSec": 8,
-  "durationToleranceSec": 2,
+  "fps": 24,
+  "durationSec": 6,
+  "durationToleranceSec": 0.15,
   "qc": [
     "G-technical"
   ]

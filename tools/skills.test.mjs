@@ -79,7 +79,7 @@ test("a skill id may live in one folder only, and a pack must name a skill that 
   assert.ok(has(S.validateSkills(dir).issues, /skill command \/graph is used by/));
   const dir2 = scratch(t);
   rmSync(path.join(dir2, "skills/candidate/minecraft"), { recursive: true });
-  assert.ok(has(S.validateSkills(dir2).issues, /packs\/voxel-build: hermes\.skill \/minecraft is not in skills\//));
+  assert.ok(has(S.validateSkills(dir2).issues, /packs\/voxel-build-skill: hermes\.skill \/minecraft is not in skills\//));
 });
 
 test("a skill's packs must exist and name it; its kit must exist", (t) => {

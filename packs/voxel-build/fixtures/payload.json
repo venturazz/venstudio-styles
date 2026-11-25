@@ -2,44 +2,150 @@
   "format": "short",
   "width": 1080,
   "height": 1920,
-  "fps": 30,
-  "engine": "hermes",
+  "fps": 24,
+  "engine": "html-capture",
   "transitionSec": 0,
-  "hermesSkill": "/minecraft",
   "shots": [
     {
       "shotRef": "shot-01",
-      "assetId": "asset-shot-01",
-      "seconds": 4,
-      "motion": "zoom-in"
+      "seconds": 2,
+      "motion": "zoom-in",
+      "beat": "a village starts with one well",
+      "assetId": "asset-shot-01"
     },
     {
       "shotRef": "shot-02",
-      "assetId": "asset-shot-02",
-      "seconds": 4,
-      "motion": "pan-left"
+      "seconds": 2,
+      "motion": "pan-left",
+      "beat": "then a farm, block by block",
+      "assetId": "asset-shot-02"
+    },
+    {
+      "shotRef": "shot-03",
+      "seconds": 2,
+      "motion": "zoom-out",
+      "beat": "and a house that closes its own roof",
+      "assetId": "asset-shot-03"
     }
   ],
-  "narrationAssetId": "asset-narration",
-  "narrationSec": 8,
-  "durationSec": 8,
+  "durationSec": 6,
   "targetLufs": -14,
-  "fontAssetId": null,
-  "inputs": [
-    "asset-shot-01",
-    "asset-shot-02",
-    "asset-narration"
-  ],
   "captions": [
     {
       "start": 0,
+      "end": 2,
+      "text": "Desa ini dimulai dari satu sumur"
+    },
+    {
+      "start": 2,
       "end": 4,
-      "text": "What the studio planned for this shot."
+      "text": "Lalu ladangnya tumbuh blok demi blok"
     },
     {
       "start": 4,
-      "end": 8,
-      "text": "Hermes renders it with /minecraft."
+      "end": 6,
+      "text": "Dan rumah menutup atapnya sendiri"
     }
-  ]
+  ],
+  "inputs": [
+    "asset-shot-01",
+    "asset-shot-02",
+    "asset-shot-03",
+    "asset-narration"
+  ],
+  "scenePlan": {
+    "version": 1,
+    "engine": "html-capture",
+    "template": "voxel-build",
+    "family": "game-style",
+    "width": 1080,
+    "height": 1920,
+    "fps": 24,
+    "transitionSec": 0,
+    "scenes": [
+      {
+        "shotRef": "shot-01",
+        "seconds": 2,
+        "beatRole": "hook",
+        "elements": [
+          {
+            "kind": "diagram",
+            "text": "well",
+            "struct": "well"
+          },
+          {
+            "kind": "heading",
+            "text": "Dimulai dari satu sumur"
+          }
+        ],
+        "tokens": [
+          "pop"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 48,
+            "fps": 24
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-02",
+        "seconds": 2,
+        "beatRole": "body",
+        "elements": [
+          {
+            "kind": "diagram",
+            "text": "farm",
+            "struct": "farm"
+          },
+          {
+            "kind": "heading",
+            "text": "Ladangnya tumbuh"
+          }
+        ],
+        "tokens": [
+          "drift"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 48,
+            "fps": 24
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-03",
+        "seconds": 2,
+        "beatRole": "outro",
+        "elements": [
+          {
+            "kind": "diagram",
+            "text": "medium_house",
+            "struct": "medium_house"
+          },
+          {
+            "kind": "heading",
+            "text": "Atapnya menutup sendiri"
+          }
+        ],
+        "tokens": [
+          "pull"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 48,
+            "fps": 24
+          }
+        ]
+      }
+    ]
+  },
+  "narrationAssetId": "asset-narration",
+  "narrationSec": 6
 }

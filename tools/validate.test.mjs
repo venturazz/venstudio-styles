@@ -54,6 +54,7 @@ test("every pack in this repo is valid", () => {
     "story-read-aloud",
     "travel-documentary",
     "voxel-build",
+    "voxel-build-skill",
     "what-if-3d",
   ]);
 });
@@ -152,13 +153,13 @@ test("one research pack per claude-animation-skills skill, pinned, credited and 
     kurzgesagt: "flat-space",
     "low-poly": "ps1-low-poly",
     "map-route": "map-route",
-    minecraft: "voxel-build",
+    minecraft: "voxel-build-skill",
     "minimalistic-graphics": "step-line-art-skill",
     "stick-figure": "stick-figure",
     "zach-d-films": "what-if-3d",
   };
   // Two of them are superseded by a worker pack that renders the same look, so they sit at retired; the rest are live trials.
-  const RETIRED = ["graph", "minimalistic-graphics"];
+  const RETIRED = ["graph", "minimalistic-graphics", "minecraft"];
   for (const [skill, id] of Object.entries(PACKS)) {
     const s = load(id);
     const status = RETIRED.includes(skill) ? "retired" : "trial";
@@ -339,6 +340,7 @@ test("workflow: every pack names its recipe; stills and the explainer are image-
     "line-graph": "scene-spec",
     "minimal-line-art": "scene-spec",
     "probe-line-graph": "scene-spec",
+    "voxel-build": "scene-spec",
   };
   const { packs } = V.validateRepo(ROOT);
   for (const { id } of packs) {
