@@ -4,7 +4,7 @@
   "name": "Minecraft",
   "description": "A village builds itself block by block: real voxel structures on grass, a cutting plane sweeping upward, three camera moves, a pixel pay-off word and a caption plate. The look is fixed; the request sets shots, words and motion.",
   "version": "0.3.0",
-  "status": "draft",
+  "status": "lab",
   "family": "game-style",
   "formats": {
     "supported": [
@@ -149,6 +149,13 @@
       "ref": "venturazz/venstudio-skills chains/voxel-build/render/fixture.mjs on the host: 6 frames at 1080x1920, 8 fps, byte-identical across runs after a glyph-rasterisation warm-up",
       "result": "pass",
       "notes": "Determinism grade A evidence, measured not asserted. This is not a CI render of this pack; that is the next curation entry and it requires the html-capture CI job to pass."
+    },
+    {
+      "date": "2026-11-25",
+      "kind": "ci-render",
+      "ref": "venturazz/venstudio-styles CI run 45528167102 (branch feat/voxel-worker-pack, commit 014f39f), job remotion: \"Render every html-capture pack's fixture with the vendored worker, then check size, fps, duration and frame count\"",
+      "result": "pass",
+      "notes": "The pack rendered in Chrome Headless Shell through the vendored worker: 1080x1920, 24 fps, 6 s, 144 frames, H.264. The page draws with WebGL and its own vendored textures; the only network it could reach is blocked by the capture sandbox."
     }
   ],
   "workflow": {
