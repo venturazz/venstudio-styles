@@ -1,0 +1,167 @@
+{
+  "format": 1,
+  "id": "voxel-build",
+  "name": "Minecraft",
+  "description": "A village builds itself block by block: real voxel structures on grass, a cutting plane sweeping upward, three camera moves, a pixel pay-off word and a caption plate. The look is fixed; the request sets shots, words and motion.",
+  "version": "0.3.0",
+  "status": "lab",
+  "family": "game-style",
+  "formats": {
+    "supported": [
+      "short"
+    ],
+    "naturalFrame": "portrait"
+  },
+  "renderer": {
+    "engine": "html-capture",
+    "minWorkerVersion": "0.12.0",
+    "composition": null,
+    "drawsCaptions": true
+  },
+  "contract": {
+    "pacing": {
+      "shotSeconds": [
+        2,
+        6
+      ],
+      "hookWithinMs": 1000,
+      "cutsPerMinute": [
+        10,
+        30
+      ],
+      "transitionSec": 0
+    },
+    "onScreen": {
+      "elements": [
+        "diagram",
+        "heading"
+      ],
+      "motionTokens": [
+        "pop",
+        "drift",
+        "pull"
+      ],
+      "elementAnimation": true
+    },
+    "captions": {
+      "required": true,
+      "spec": "caption-spec-v1",
+      "safeAreaPct": 8
+    },
+    "audio": {
+      "narrated": true,
+      "targetLufs": -14,
+      "maxTruePeakDb": -1,
+      "musicPolicy": "none"
+    },
+    "assets": {
+      "model": "plates-and-diagrams",
+      "kinds": [
+        "other"
+      ],
+      "allowedSources": [
+        "upload",
+        "hermes",
+        "muse",
+        "worker",
+        "licensed",
+        "generated"
+      ],
+      "forbidKinds": [
+        "reference-video"
+      ]
+    }
+  },
+  "portal": {
+    "beatShape": "single",
+    "qc": {
+      "minPresentationScore": 75,
+      "gates": [
+        "G-technical",
+        "G-presentation",
+        "G-assets",
+        "G-compliance",
+        "G-claims"
+      ]
+    },
+    "themes": [
+      "gaming",
+      "kids",
+      "motivation"
+    ],
+    "keywords": [
+      "block by block",
+      "voxel",
+      "build",
+      "minecraft style"
+    ],
+    "cautions": [
+      "The pack builds its own pixels: it asks the studio for no pictures. Until the asset model grows a \"none\" value, Studio's planner may still plan stills that this renderer ignores — the render is correct either way, the plan is just wasteful.",
+      "Textures are original block art from the Pixel-Perfection kit (CC BY-SA 4.0), vendored in render/assets/vendor; they are not Mojang's textures. Keep the attribution and the share-alike notice with the pack.",
+      "Not affiliated with Mojang or Microsoft. No Mojang logo, character or texture is used.",
+      "Structures are cut from the kit's converted builds: a well, a farm, a house, a blacksmith, a church, a tavern, a library. The rotation is fixed by the style, so a script that asks for six shots gets six different buildings, not six copies.",
+      "One satisfying build per shot with one payoff word; a shot longer than the build needs holds the finished structure rather than cutting away."
+    ],
+    "sources": [
+      "https://github.com/artemnovitckii/claude-animation-skills/tree/86f70106c9aeae1334184467da5776c533ada3bc/skills/minecraft"
+    ]
+  },
+  "fixture": {
+    "payload": "fixtures/payload.json",
+    "expect": "fixtures/expect.json"
+  },
+  "provenance": [
+    {
+      "type": "skill",
+      "ref": "https://github.com/artemnovitckii/claude-animation-skills@86f70106c9aeae1334184467da5776c533ada3bc (skills/minecraft/SKILL.md)",
+      "licence": "MIT, Copyright (c) 2026 Artem Novitckii (the repository's LICENSE)",
+      "notes": "The taste rules came from this skill: pacing, one build with one payoff, a build line under about 17 characters, portrait 1080x1920. No code, frame or audio from the repository is used — the renderer here is the voxel kit below, not the skill's templates. Credit: Artem Novitckii."
+    },
+    {
+      "type": "repo",
+      "ref": "Pixel-Perfection block textures, vendored from the kit at /opt/data/assets/mc/vendor (25 PNGs, blockmap.json with 126 blocks, 12 converted structures)",
+      "licence": "CC BY-SA 4.0 — attribution required; share-alike applies to the vendored art",
+      "notes": "Original block art, not extracted from Minecraft. Vendored rather than downloaded at render time so a pack renders the same on any worker and the digest can pin it."
+    },
+    {
+      "type": "repo",
+      "ref": "three.js r16x, vendored as render/assets/vendor/three.module.js; mcvoxel.js and mcrig.js are the kit's own builders",
+      "licence": "MIT (three.js Authors)",
+      "notes": "The scene, the clipping plane and the camera moves are written for this pack in render/voxel.js; the kit only turns block nodes into batched geometry."
+    },
+    {
+      "type": "owner-note",
+      "ref": "venturazz/venstudio-skills chains/voxel-build@1.0.0 (chain.json + assets.digest.json, 52 files pinned), chain render pilot 216 frames at 1080x1920, 24 fps",
+      "licence": "owner",
+      "notes": "The chain is where the look was proven: tools/chain-digest.mjs pins the bytes, render/fixture.mjs proves two runs agree, and render/capture.mjs refuses to start on a digest mismatch. This pack is that chain, vendored so a worker can render it without the host's 149 MB working copy."
+    },
+    {
+      "type": "skill",
+      "ref": "https://github.com/artemnovitckii/claude-animation-skills@86f70106c9aeae1334184467da5776c533ada3bc (skills/minecraft/SKILL.md) — owner report: installed in Hermes and working",
+      "licence": "MIT, Copyright (c) 2026 Artem Novitckii",
+      "notes": "Recorded for the 0.2.0 hermes-engine trial, which could never be curatable because a Hermes render is never published. The 0.3.0 look does not run that skill: it is the voxel chain, rendered by the worker, so this is history rather than a dependency."
+    }
+  ],
+  "curation": [
+    {
+      "date": "2026-11-25",
+      "kind": "qc",
+      "ref": "venturazz/venstudio-skills chains/voxel-build/render/fixture.mjs on the host: 6 frames at 1080x1920, 8 fps, byte-identical across runs after a glyph-rasterisation warm-up",
+      "result": "pass",
+      "notes": "Determinism grade A evidence, measured not asserted. This is not a CI render of this pack; that is the next curation entry and it requires the html-capture CI job to pass."
+    },
+    {
+      "date": "2026-11-25",
+      "kind": "ci-render",
+      "ref": "venturazz/venstudio-styles CI run 45528167102 (branch feat/voxel-worker-pack, commit 014f39f), job remotion: \"Render every html-capture pack's fixture with the vendored worker, then check size, fps, duration and frame count\"",
+      "result": "pass",
+      "notes": "The pack rendered in Chrome Headless Shell through the vendored worker: 1080x1920, 24 fps, 6 s, 144 frames, H.264. The page draws with WebGL and its own vendored textures; the only network it could reach is blocked by the capture sandbox."
+    }
+  ],
+  "workflow": {
+    "recipe": "scene-spec",
+    "review": [
+      "scene-spec"
+    ]
+  }
+}

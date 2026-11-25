@@ -79,15 +79,15 @@ test("a skill id may live in one folder only, and a pack must name a skill that 
   assert.ok(has(S.validateSkills(dir).issues, /skill command \/graph is used by/));
   const dir2 = scratch(t);
   rmSync(path.join(dir2, "skills/candidate/minecraft"), { recursive: true });
-  assert.ok(has(S.validateSkills(dir2).issues, /packs\/hermes-minecraft: hermes\.skill \/minecraft is not in skills\//));
+  assert.ok(has(S.validateSkills(dir2).issues, /packs\/voxel-build-skill: hermes\.skill \/minecraft is not in skills\//));
 });
 
 test("a skill's packs must exist and name it; its kit must exist", (t) => {
   const dir = scratch(t);
   const file = path.join(dir, "skills/candidate/dan-koe/skill.json");
-  edit(file, (s) => ({ ...s, packs: ["hermes-graph", "no-such-pack"], kit: "nope" }));
+  edit(file, (s) => ({ ...s, packs: ["line-graph-skill", "no-such-pack"], kit: "nope" }));
   const { issues } = S.validateSkills(dir);
-  assert.ok(has(issues, /packs names "hermes-graph", but that pack's hermes\.skill is \/graph/));
+  assert.ok(has(issues, /packs names "line-graph-skill", but that pack's hermes\.skill is \/graph/));
   assert.ok(has(issues, /packs names "no-such-pack", which is not a hermes pack here/));
   assert.ok(has(issues, /kit "nope" is not in skills\/kits/));
 });

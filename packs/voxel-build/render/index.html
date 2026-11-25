@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>voxel-build</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #111;
+        overflow: hidden;
+      }
+      #stage canvas {
+        display: block;
+      }
+      #overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        font-family: Pixel, monospace;
+        color: #fff;
+        -webkit-font-smoothing: none;
+      }
+      /* One word, big, landing late. The shadow is a block edge, not a glow. */
+      #word {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 15.6%;
+        text-align: center;
+        font-size: 190px;
+        line-height: 0.95;
+        letter-spacing: -2px;
+        text-shadow: 0 10px 0 rgba(0, 0, 0, 0.55), 0 0 40px rgba(0, 0, 0, 0.35);
+        opacity: 0;
+        transform-origin: 50% 50%;
+        will-change: transform, opacity;
+      }
+      /* Caption plate in the lower third, inside the 8% safe area the contract asks for. */
+      #caption {
+        position: absolute;
+        left: 5.2%;
+        right: 5.2%;
+        bottom: 12%;
+        text-align: center;
+        font-size: 62px;
+        line-height: 1.18;
+        padding: 26px 30px;
+        border-radius: 18px;
+        background: rgba(8, 10, 14, 0.62);
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div id="overlay"><div id="word"></div><div id="caption"></div></div>
+    <!-- page.js is render/voxel.js and the kit bundled with esbuild into one classic script; see tools/bundle-voxel-page.mjs.
+         The sources beside it are the reviewable truth. -->
+    <script src="page.js"></script>
+  </body>
+</html>

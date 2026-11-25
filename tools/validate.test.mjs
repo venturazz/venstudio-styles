@@ -32,29 +32,30 @@ test("every pack in this repo is valid", () => {
   assert.deepEqual(issues, []);
   assert.deepEqual(packs.map((p) => p.id), [
     "ambient-loop",
-    "animated-line-graph",
-    "dafiology-fullframe",
-    "documentary-stills",
+    "branching-lines",
+    "designed-explainer",
+    "documentary",
     "explainer-flat-vector",
-    "hermes-breakdown",
-    "hermes-dan-koe",
-    "hermes-designed-explainer",
-    "hermes-graph",
-    "hermes-kurzgesagt",
-    "hermes-low-poly",
-    "hermes-map-route",
-    "hermes-minecraft",
-    "hermes-minimalistic-graphics",
-    "hermes-research-explainer",
-    "hermes-stick-figure",
-    "hermes-zach-d-films",
-    "horror-story",
+    "exploded-view",
+    "flat-space",
+    "full-frame",
+    "horror-narration",
+    "line-graph",
+    "line-graph-skill",
+    "low-poly-shapes",
+    "map-route",
     "minimal-line-art",
     "mystery-narration",
     "probe-line-graph",
+    "ps1-low-poly",
+    "research-render",
+    "step-line-art-skill",
+    "stick-figure",
     "story-read-aloud",
-    "three-low-poly",
     "travel-documentary",
+    "voxel-build",
+    "voxel-build-skill",
+    "what-if-3d",
   ]);
 });
 
@@ -66,7 +67,7 @@ test("html-capture packs: index.html, text files only, no remote references, lic
   assert.ok(has(old, /0\.10\.0 or later for html-capture/));
   const comp = V.validateStyle({ ...clone(load("probe-line-graph")), renderer: { engine: "html-capture", minWorkerVersion: "0.10.0", composition: "x-y", drawsCaptions: false } });
   assert.ok(has(comp, /composition must be null for html-capture/));
-  assert.ok(has(V.validateStyle({ ...clone(load("documentary-stills")), renderer: { ...load("documentary-stills").renderer, drawsCaptions: true } }), /only for html-capture/));
+  assert.ok(has(V.validateStyle({ ...clone(load("documentary")), renderer: { ...load("documentary").renderer, drawsCaptions: true } }), /only for html-capture/));
 
   const dir = scratch(t, ["probe-line-graph"]);
   const render = path.join(dir, "packs", "probe-line-graph", "render");
@@ -90,8 +91,8 @@ test("html-capture packs: index.html, text files only, no remote references, lic
 });
 
 test("hermes packs are research only: never above trial, no render project, a research-source entry instead of a CI render", () => {
-  const h = load("hermes-research-explainer");
-  assert.deepEqual(V.validateStyle(h, { dirName: "hermes-research-explainer" }), []);
+  const h = load("research-render");
+  assert.deepEqual(V.validateStyle(h, { dirName: "research-render" }), []);
   for (const status of ["proven", "listed"]) {
     const s = { ...clone(h), status, curation: [{ date: "2026-11-21", kind: "owner-review", ref: "PR", result: "approved", notes: "" }, { date: "2026-11-21", kind: "trial-run", ref: "run", result: "pass", notes: "" }] };
     assert.ok(has(V.validateStyle(s), /research only \(owner decision\): the pack can be at most trial, never/), status);
@@ -103,8 +104,8 @@ test("hermes packs are research only: never above trial, no render project, a re
 const RESEARCH = { date: "2026-11-22", kind: "research-source", ref: "https://github.com/artemnovitckii/claude-animation-skills@86f7010 (skills/graph); owner report: works in Hermes", result: "pass", notes: "" };
 
 test("research-source: accepted for a hermes pack at lab or trial, required there, never for other engines, never above trial", () => {
-  const g = load("hermes-graph");
-  assert.deepEqual(V.validateStyle(g, { dirName: "hermes-graph" }), []);
+  const g = load("line-graph-skill");
+  assert.deepEqual(V.validateStyle(g, { dirName: "line-graph-skill" }), []);
   for (const status of ["lab", "trial"]) {
     assert.deepEqual(V.validateStyle({ ...clone(g), status, curation: [RESEARCH] }), [], status);
     assert.ok(has(V.validateStyle({ ...clone(g), status, curation: [] }), /hermes pack needs a research-source entry with result "pass"/), `${status} without evidence`);
@@ -117,39 +118,52 @@ test("research-source: accepted for a hermes pack at lab or trial, required ther
     assert.ok(has(V.validateStyle({ ...clone(g), status, curation }), /can be at most trial, never/), status);
   }
   // Another engine: research-source is refused, and it never stands in for the CI render.
-  const html = load("animated-line-graph");
+  const html = load("line-graph");
   const asHtml = { ...clone(html), status: "trial", curation: [RESEARCH] };
   assert.ok(has(V.validateStyle(asHtml), /needs a passing ci-render entry/), "html-capture at trial with only research-source");
   assert.ok(has(V.validateStyle(asHtml), /research-source is evidence for hermes packs \(and html-design packs\) only/));
-  assert.ok(has(V.validateStyle({ ...clone(load("documentary-stills")), curation: [...load("documentary-stills").curation, RESEARCH] }), /research-source is evidence for hermes packs \(and html-design packs\) only/), "even beside a real ci-render");
+  assert.ok(has(V.validateStyle({ ...clone(load("documentary")), curation: [...load("documentary").curation, RESEARCH] }), /research-source is evidence for hermes packs \(and html-design packs\) only/), "even beside a real ci-render");
   assert.ok(has(V.validateStyle({ ...clone(html), status: "draft", curation: [RESEARCH] }), /research-source is evidence for hermes packs \(and html-design packs\) only/), "even on a draft");
 });
 
 test("the hermes block: only on hermes packs, a skill name, a mode, how the plan maps to the input; project skills say how the narration is used", (t) => {
-  const g = load("hermes-graph");
+  const g = load("line-graph-skill");
   assert.equal(g.hermes.skill, "/graph");
-  assert.ok(has(V.validateStyle({ ...clone(load("animated-line-graph")), hermes: clone(g.hermes) }), /hermes names the Hermes skill of a hermes pack/));
+  assert.ok(has(V.validateStyle({ ...clone(load("line-graph")), hermes: clone(g.hermes) }), /hermes names the Hermes skill of a hermes pack/));
   assert.ok(has(V.validateStyle({ ...clone(g), hermes: { ...g.hermes, skill: "graph" } }), /hermes.skill must be a Hermes skill as invoked/));
   assert.ok(has(V.validateStyle({ ...clone(g), hermes: { ...g.hermes, mode: "quick" } }), /hermes.mode must be one of spec, project/));
   assert.ok(has(V.validateStyle({ ...clone(g), hermes: { ...g.hermes, input: "" } }), /hermes.input must say/));
   assert.ok(has(V.validateStyle({ ...clone(g), hermes: { ...g.hermes, colour: 1 } }), /hermes: unknown field "colour"/));
   assert.ok(has(V.validateStyle({ ...clone(g), hermes: { ...g.hermes, aliases: ["/graph"] } }), /must not repeat the skill/));
-  const z = load("hermes-zach-d-films");
+  const z = load("what-if-3d");
   assert.deepEqual([z.hermes.skill, z.hermes.aliases, z.hermes.mode], ["/zach-d-films", ["/zach-3d-films"], "project"]);
   assert.ok(has(V.validateStyle({ ...clone(z), hermes: { ...z.hermes, input: "Make the reel from the storyboard." } }), /project skill must say how the run's narration and captions are used/));
-  assert.deepEqual(V.validateStyle({ ...clone(load("hermes-research-explainer")) }), [], "the block is optional: the generic Hermes render names no skill");
+  assert.deepEqual(V.validateStyle({ ...clone(load("research-render")) }), [], "the block is optional: the generic Hermes render names no skill");
   // variantOf must name a pack in the repo.
-  const dir = scratch(t, ["hermes-graph"]);
-  assert.ok(has(V.validateRepo(dir).issues, /hermes.variantOf names "animated-line-graph", which is not a pack here/));
-  assert.deepEqual(V.validateRepo(scratch(t, ["hermes-graph", "animated-line-graph"])).issues, []);
+  const dir = scratch(t, ["line-graph-skill"]);
+  assert.ok(has(V.validateRepo(dir).issues, /hermes.variantOf names "line-graph", which is not a pack here/));
+  assert.deepEqual(V.validateRepo(scratch(t, ["line-graph-skill", "line-graph"])).issues, []);
 });
 
 test("one research pack per claude-animation-skills skill, pinned, credited and licensed; the alias is the same pack", () => {
-  const SKILLS = ["breakdown", "dan-koe", "graph", "kurzgesagt", "low-poly", "map-route", "minecraft", "minimalistic-graphics", "stick-figure", "zach-d-films"];
-  for (const skill of SKILLS) {
-    const id = `hermes-${skill}`;
+  const PACKS = {
+    breakdown: "exploded-view",
+    "dan-koe": "branching-lines",
+    graph: "line-graph-skill",
+    kurzgesagt: "flat-space",
+    "low-poly": "ps1-low-poly",
+    "map-route": "map-route",
+    minecraft: "voxel-build-skill",
+    "minimalistic-graphics": "step-line-art-skill",
+    "stick-figure": "stick-figure",
+    "zach-d-films": "what-if-3d",
+  };
+  // Two of them are superseded by a worker pack that renders the same look, so they sit at retired; the rest are live trials.
+  const RETIRED = ["graph", "minimalistic-graphics", "minecraft"];
+  for (const [skill, id] of Object.entries(PACKS)) {
     const s = load(id);
-    assert.deepEqual([s.status, s.renderer.engine, s.hermes.skill], ["trial", "hermes", `/${skill}`], id);
+    const status = RETIRED.includes(skill) ? "retired" : "trial";
+    assert.deepEqual([s.status, s.renderer.engine, s.hermes.skill], [status, "hermes", `/${skill}`], id);
     assert.equal(s.hermes.mode, skill === "stick-figure" || skill === "zach-d-films" ? "project" : "spec", id);
     const src = s.provenance.find((p) => p.type === "skill");
     assert.ok(src && src.ref.startsWith("https://github.com/artemnovitckii/claude-animation-skills@86f70106c9aeae1334184467da5776c533ada3bc"), id);
@@ -158,14 +172,14 @@ test("one research pack per claude-animation-skills skill, pinned, credited and 
     assert.ok(!s.curation.some((e) => e.kind === "ci-render"), `${id} claims no CI render`);
     assert.match(readFileSync(path.join(ROOT, "packs", id, "README.md"), "utf8"), /by\n?\s*\[Artem Novitckii\]/, `${id} credits the author`);
   }
-  assert.ok(!SKILLS.includes("zach-3d-films"));
-  assert.deepEqual(load("hermes-zach-d-films").hermes.aliases, ["/zach-3d-films"]);
-  assert.deepEqual(load("hermes-graph").hermes.variantOf, ["animated-line-graph"]);
-  assert.deepEqual(load("hermes-minimalistic-graphics").hermes.variantOf, ["minimal-line-art"]);
+  assert.ok(!Object.keys(PACKS).includes("zach-3d-films"));
+  assert.deepEqual(load("what-if-3d").hermes.aliases, ["/zach-3d-films"]);
+  assert.deepEqual(load("line-graph-skill").hermes.variantOf, ["line-graph"]);
+  assert.deepEqual(load("step-line-art-skill").hermes.variantOf, ["minimal-line-art"]);
 });
 
 test("the two adaptations are at trial on real CI renders: this repo's and venstudio's", () => {
-  for (const id of ["animated-line-graph", "minimal-line-art"]) {
+  for (const id of ["line-graph", "minimal-line-art"]) {
     const s = load(id);
     assert.deepEqual([s.status, s.version], ["trial", "0.1.2"], id);
     const refs = s.curation.filter((e) => e.kind === "ci-render" && e.result === "pass").map((e) => e.ref);
@@ -182,7 +196,7 @@ test("renderDigest is packDigest over render/ without the prefix, as a worker ha
 });
 
 test("a valid pack has no issues, and so does its copy in a fresh repo", (t) => {
-  assert.deepEqual(V.validateStyle(load("documentary-stills"), { dirName: "documentary-stills" }), []);
+  assert.deepEqual(V.validateStyle(load("documentary"), { dirName: "documentary" }), []);
   const dir = scratch(t, ["explainer-flat-vector"]);
   assert.deepEqual(V.validateRepo(dir).issues, []);
 });
@@ -204,14 +218,14 @@ test("every required top-level field is required", () => {
 });
 
 test("bad status, bad version and an id that is not the directory are refused", () => {
-  const s = load("horror-story");
+  const s = load("horror-narration");
   assert.ok(has(V.validateStyle({ ...s, status: "beta" }), /status must be one of/));
   assert.ok(has(V.validateStyle({ ...s, version: "1.0" }), /semver/));
   assert.ok(has(V.validateStyle(s, { dirName: "other" }), /must equal the pack directory name/));
 });
 
 test("bad renderer: unknown engine, missing or stray composition, an engine no worker runs past draft", () => {
-  const stills = load("documentary-stills");
+  const stills = load("documentary");
   const remotion = load("explainer-flat-vector");
   assert.ok(has(V.validateStyle({ ...stills, renderer: { ...stills.renderer, engine: "after-effects" } }), /renderer.engine must be one of/));
   assert.ok(has(V.validateStyle({ ...remotion, renderer: { ...remotion.renderer, composition: null } }), /renderer.composition must name/));
@@ -259,9 +273,9 @@ test("duplicate pack ids and duplicate compositions are refused", (t) => {
   assert.deepEqual(V.findDuplicates([{ id: "a" }, { id: "a" }]), ['duplicate pack id "a"']);
   assert.ok(has(V.findDuplicates([{ id: "a", composition: "c" }, { id: "b", composition: "c" }]), /composition "c" is used by "a" and "b"/));
   // A second directory whose style.json claims an existing id.
-  const dir = scratch(t, ["documentary-stills", "horror-story"], { "horror-story": { dir: "horror-copy", style: (s) => ({ ...s, id: "documentary-stills" }) } });
+  const dir = scratch(t, ["documentary", "horror-narration"], { "horror-narration": { dir: "horror-copy", style: (s) => ({ ...s, id: "documentary" }) } });
   const { issues } = V.validateRepo(dir);
-  assert.ok(has(issues, /duplicate pack id "documentary-stills"/), issues.join("\n"));
+  assert.ok(has(issues, /duplicate pack id "documentary"/), issues.join("\n"));
 });
 
 test("README, fixtures and the render project are checked", (t) => {
@@ -299,7 +313,7 @@ test("the JSON schema's enums are the validator's", () => {
   assert.deepEqual(p.provenance.items.properties.type.enum, V.PROVENANCE_TYPES);
   assert.deepEqual(p.curation.items.properties.kind.enum, V.CURATION_KINDS);
   assert.deepEqual(p.contract.properties.onScreen.properties.motionTokens.items.enum, V.MOTION_TOKENS);
-  assert.deepEqual(schema.required.sort(), Object.keys(load("documentary-stills")).filter((k) => !V.OPTIONAL_TOP_KEYS.includes(k)).sort());
+  assert.deepEqual(schema.required.sort(), Object.keys(load("documentary")).filter((k) => !V.OPTIONAL_TOP_KEYS.includes(k)).sort());
   assert.deepEqual(p.hermes.properties.mode.enum, V.HERMES_MODES);
   assert.deepEqual(p.hermes.properties.voice.enum, V.HERMES_VOICES);
   assert.deepEqual(p.workflow.properties.recipe.enum, V.RECIPE_IDS);
@@ -315,28 +329,29 @@ test("the assembler's generated files are stable", () => {
 test("workflow: every pack names its recipe; stills and the explainer are image-sequence, data pages scene-spec, hermes packs hermes-skill", () => {
   const expected = {
     "ambient-loop": "image-sequence",
-    "documentary-stills": "image-sequence",
+    "documentary": "image-sequence",
     "explainer-flat-vector": "image-sequence",
-    "horror-story": "image-sequence",
+    "horror-narration": "image-sequence",
     "mystery-narration": "image-sequence",
     "story-read-aloud": "image-sequence",
     "travel-documentary": "image-sequence",
-    "three-low-poly": "image-sequence",
-    "dafiology-fullframe": "image-sequence",
-    "animated-line-graph": "scene-spec",
+    "low-poly-shapes": "image-sequence",
+    "full-frame": "image-sequence",
+    "line-graph": "scene-spec",
     "minimal-line-art": "scene-spec",
     "probe-line-graph": "scene-spec",
+    "voxel-build": "scene-spec",
   };
   const { packs } = V.validateRepo(ROOT);
   for (const { id } of packs) {
     const s = load(id);
-    if (id === "hermes-designed-explainer") {
+    if (id === "designed-explainer") {
       // html-design is never inferred: a pack runs Hermes-written pages only when it says so.
       assert.equal(s.workflow?.recipe, "html-design", id);
       assert.equal(V.recipeOf({ ...clone(s), workflow: undefined }), "scene-spec", `${id} without workflow would be a plain scene-spec page`);
       continue;
     }
-    const want = id.startsWith("hermes-") ? "hermes-skill" : expected[id];
+    const want = s.renderer.engine === "hermes" ? "hermes-skill" : expected[id];
     assert.equal(s.workflow?.recipe, want, id);
     // The recipe a pack names is the one its engine and asset model imply, so inference agrees for these packs.
     assert.equal(V.recipeOf({ ...clone(s), workflow: undefined }), want, `${id} inferred`);
@@ -344,24 +359,24 @@ test("workflow: every pack names its recipe; stills and the explainer are image-
   // The two full-project skills make their own voice (their make.sh records with Kokoro and times every shot to it); the quick skills use the run's narration.
   for (const id of packs.map((p) => p.id).filter((i) => load(i).hermes)) {
     const voice = load(id).hermes.voice;
-    assert.equal(voice, ["hermes-stick-figure", "hermes-zach-d-films"].includes(id) ? "skill" : "run", id);
+    assert.equal(voice, ["stick-figure", "what-if-3d"].includes(id) ? "skill" : "run", id);
     assert.deepEqual(V.workflowStages(load(id)), voice === "skill" ? ["idea", "research", "script", "skill-brief", "render", "qc"] : ["idea", "research", "script", "skill-brief", "voice", "render", "qc"], id);
   }
-  assert.deepEqual(V.workflowStages(load("documentary-stills")), ["idea", "research", "script", "storyboard", "assets", "voice", "render", "qc"]);
+  assert.deepEqual(V.workflowStages(load("documentary")), ["idea", "research", "script", "storyboard", "assets", "voice", "render", "qc"]);
   // scene-spec runs see still frames of the page (the preview stage) before the voice and the render.
-  assert.deepEqual(V.workflowStages(load("animated-line-graph")), ["idea", "research", "script", "scene-spec", "preview", "voice", "render", "qc"]);
-  assert.deepEqual(load("animated-line-graph").workflow.review, ["scene-spec"]);
-  assert.deepEqual(V.workflowStages(load("hermes-designed-explainer")), ["idea", "research", "script", "html-design", "preview", "voice", "render", "qc"]);
+  assert.deepEqual(V.workflowStages(load("line-graph")), ["idea", "research", "script", "scene-spec", "preview", "voice", "render", "qc"]);
+  assert.deepEqual(load("line-graph").workflow.review, ["scene-spec"]);
+  assert.deepEqual(V.workflowStages(load("designed-explainer")), ["idea", "research", "script", "html-design", "preview", "voice", "render", "qc"]);
   // The owner checks the plan of a run without pictures every time: the scene spec, the skill brief, or the page and its stills.
-  for (const { id } of packs) if (id.startsWith("hermes-")) assert.deepEqual(load(id).workflow.review, id === "hermes-designed-explainer" ? ["html-design", "preview"] : ["skill-brief"], id);
+  for (const { id } of packs) if (load(id).renderer.engine === "hermes") assert.deepEqual(load(id).workflow.review, id === "designed-explainer" ? ["html-design", "preview"] : ["skill-brief"], id);
 });
 
 test("workflow rules: a known, built recipe that fits the engine; review names stages of the pack's own list", () => {
-  const stills = load("documentary-stills");
-  const graph = load("animated-line-graph");
+  const stills = load("documentary");
+  const graph = load("line-graph");
   const explainer = load("explainer-flat-vector");
-  const hermes = load("hermes-graph");
-  const project = load("hermes-stick-figure");
+  const hermes = load("line-graph-skill");
+  const project = load("stick-figure");
   const w = (s, workflow) => ({ ...clone(s), workflow });
   assert.ok(has(V.validateStyle(w(stills, { recipe: "slideshow" })), /workflow.recipe must be one of image-sequence, scene-spec, hermes-skill, html-design, engine-project, clip-sequence/));
   for (const reserved of ["engine-project", "clip-sequence"]) {
@@ -376,7 +391,7 @@ test("workflow rules: a known, built recipe that fits the engine; review names s
   assert.ok(has(V.validateStyle(w(still, { recipe: "scene-spec" })), /this pack renders with remotion-2d without element animation/));
   // hermes-skill needs engine hermes, and a hermes pack may still run image-sequence (its pictures, as before).
   assert.ok(has(V.validateStyle(w(graph, { recipe: "hermes-skill" })), /hermes-skill needs engine hermes/));
-  assert.deepEqual(V.validateStyle(w(load("hermes-research-explainer"), { recipe: "image-sequence" })), []);
+  assert.deepEqual(V.validateStyle(w(load("research-render"), { recipe: "image-sequence" })), []);
   // image-sequence needs a picture-per-shot asset model.
   const noModel = clone(stills);
   noModel.contract.assets.model = "none";
@@ -406,9 +421,9 @@ test("workflow rules: a known, built recipe that fits the engine; review names s
 });
 
 test("html-design: research only, html-capture only, at most trial, the owner reviews the page and its stills, a design brief, research-source or a real ci-render", (t) => {
-  const d = load("hermes-designed-explainer");
-  assert.deepEqual(V.validateStyle(d, { dirName: "hermes-designed-explainer" }), []);
-  assert.deepEqual(V.validateRepo(scratch(t, ["hermes-designed-explainer"])).issues, []);
+  const d = load("designed-explainer");
+  assert.deepEqual(V.validateStyle(d, { dirName: "designed-explainer" }), []);
+  assert.deepEqual(V.validateRepo(scratch(t, ["designed-explainer"])).issues, []);
   assert.deepEqual([d.status, d.renderer.engine, d.renderer.drawsCaptions, d.renderer.minWorkerVersion], ["trial", "html-capture", false, "0.11.0"]);
   // Never above trial, whatever the evidence.
   for (const status of ["proven", "listed"]) {
@@ -439,7 +454,7 @@ test("html-design: research only, html-capture only, at most trial, the owner re
   assert.ok(has(V.validateStyle({ ...clone(d), design: { ...d.design, brief: "" } }), /design.brief must say/));
   assert.ok(has(V.validateStyle({ ...clone(d), design: { ...d.design, gsap: true } }), /design: unknown field "gsap"/));
   // GSAP is not vendored into an html-design pack until the owner approves its licence.
-  const gsap = scratch(t, ["hermes-designed-explainer"], { "hermes-designed-explainer": { dir: "hde" } });
+  const gsap = scratch(t, ["designed-explainer"], { "designed-explainer": { dir: "hde" } });
   const vendor = path.join(gsap, "packs", "hde", "render", "vendor", "gsap");
   mkdirSync(vendor, { recursive: true });
   writeFileSync(path.join(vendor, "gsap.min.js"), "/* gsap */");

@@ -26,7 +26,7 @@
 This document is written for **Hermes**, who opens the pull request. The checklist to load while working is
 [hermes-handover-checklist.md](hermes-handover-checklist.md). The format is FORMAT.md ("Environments" and "Engine
 command"); CONTRIBUTING.md has the flow and who may change what. The first pack made this way is
-`packs/three-low-poly` (three.js 0.183.2 from npm, resvg 0.44.0 from its GitHub release): copy its shape.
+`packs/low-poly-shapes` (three.js 0.183.2 from npm, resvg 0.44.0 from its GitHub release): copy its shape.
 
 ## When to hand a style over
 
@@ -54,7 +54,7 @@ One directory, `packs/<id>/`, targeting `main`:
 | `render/` | The render project: the scripts and scene files your render runs, text only. It reads `{props}` and writes `{out}`. No binaries (they are downloads in the recipe), no network, no clock or randomness that is not seeded from the props. |
 | `env/` | `package.json` and `package-lock.json` for an npm step; `requirements.txt` with hashes for a pip step. |
 | `environment` | The recipe **captured from what you actually ran**: the same versions and the same files. See below. |
-| `fixtures/payload.json` | A render-video payload with `engine: "command"` and `scenePlan.template` equal to the pack id. Start from `packs/three-low-poly/fixtures/payload.json`. |
+| `fixtures/payload.json` | A render-video payload with `engine: "command"` and `scenePlan.template` equal to the pack id. Start from `packs/low-poly-shapes/fixtures/payload.json`. |
 | `fixtures/expect.json` | What the render must measure: format, size, fps, duration, tolerance, QC gates. |
 | `README.md` | What the look is, how it moves, and the sections `## Provenance` and `## Status`. |
 

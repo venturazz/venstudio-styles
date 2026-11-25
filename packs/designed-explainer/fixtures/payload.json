@@ -1,0 +1,158 @@
+{
+  "format": "short",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "engine": "html-capture",
+  "transitionSec": 0,
+  "shots": [
+    {
+      "shotRef": "shot-01",
+      "assetId": "asset-shot-01",
+      "seconds": 2,
+      "motion": "zoom-in"
+    },
+    {
+      "shotRef": "shot-02",
+      "assetId": "asset-shot-02",
+      "seconds": 2,
+      "motion": "pan-left"
+    },
+    {
+      "shotRef": "shot-03",
+      "assetId": "asset-shot-03",
+      "seconds": 2,
+      "motion": "zoom-out"
+    }
+  ],
+  "narrationAssetId": "asset-narration",
+  "narrationSec": 6,
+  "durationSec": 6,
+  "targetLufs": -14,
+  "fontAssetId": "asset-font",
+  "inputs": [
+    "asset-shot-01",
+    "asset-shot-02",
+    "asset-shot-03",
+    "asset-narration",
+    "asset-font"
+  ],
+  "captions": [
+    {
+      "start": 0,
+      "end": 2,
+      "text": "Why is the sky blue?"
+    },
+    {
+      "start": 2,
+      "end": 4,
+      "text": "Sunlight carries every colour."
+    },
+    {
+      "start": 4,
+      "end": 6,
+      "text": "Air scatters the blue the most."
+    }
+  ],
+  "captionStyle": {
+    "fontAssetId": "asset-font",
+    "fontSizePx": 78,
+    "minFontSizePx": 64,
+    "maxFontSizePx": 78,
+    "lineSpacingPx": 26,
+    "outlinePx": 7,
+    "shadowPx": 5,
+    "marginXPx": 51,
+    "marginBottomPx": 154,
+    "maxWidthPx": 978,
+    "narrowFace": false,
+    "safeAreaPct": 8
+  },
+  "scenePlan": {
+    "version": 1,
+    "engine": "html-capture",
+    "template": "designed-explainer",
+    "family": "explainer",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "transitionSec": 0,
+    "scenes": [
+      {
+        "shotRef": "shot-01",
+        "seconds": 2,
+        "beatRole": "hook",
+        "elements": [
+          {
+            "kind": "heading",
+            "text": "Why the sky is blue"
+          },
+          {
+            "kind": "plate"
+          }
+        ],
+        "tokens": [
+          "pop"
+        ],
+        "camera": true,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 60,
+            "fps": 30
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-02",
+        "seconds": 2,
+        "beatRole": "body",
+        "elements": [
+          {
+            "kind": "heading",
+            "text": "Sunlight is a mix of colours"
+          },
+          {
+            "kind": "plate"
+          }
+        ],
+        "tokens": [
+          "pop"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 60,
+            "fps": 30
+          }
+        ]
+      },
+      {
+        "shotRef": "shot-03",
+        "seconds": 2,
+        "beatRole": "outro",
+        "elements": [
+          {
+            "kind": "heading",
+            "text": "Blue light scatters most"
+          },
+          {
+            "kind": "plate"
+          }
+        ],
+        "tokens": [
+          "pop"
+        ],
+        "camera": false,
+        "layers": [
+          {
+            "id": "scene",
+            "frames": 60,
+            "fps": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -23,7 +23,7 @@
     "chromium"
   ],
   "packs": [
-    "hermes-stick-figure"
+    "stick-figure"
   ],
   "curation": [],
   "notes": "Imported unchanged from upstream; not curated yet (skills/README.md). A full project with its own engine (files/engine/).",
