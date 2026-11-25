@@ -63,8 +63,8 @@ rest becomes input the studio supplies (stills, script, timings).
 | `threejs-3d-short` | data program + `renderFrame(i)`, no GPU | yes (13 clips) | `html-capture` | same shape as above; vendor three as text `.js` |
 | `roblox-kit-remotion` | Remotion + R3F compositions | yes (12 clips) | `remotion-2d` | the only heap of work: `src/packs/<id>/`, runtime already vendored |
 | `roblox-kit-threejs` / `roblox-kit-hybrid` | three.js kit scenes | yes (12 clips) | `html-capture` | after `threejs-3d-short` |
-| `godot-sprite-film` | Godot `--write-movie` + narration | yes (30 clips) | `command` + X, or `hermes` | needs Xvfb/libGL + a pinned Godot x86-64 build: owner decides |
-| `godot-toon-3d-short` | Godot toon 3D | yes (27 clips incl. cartoon3d) | same | same blocker |
+| `godot-sprite-film` | Godot `--write-movie` + narration | yes (30 clips) | `command` + X | proved on this host with the arm64 build; CI needs the x64 build pinned |
+| `godot-toon-3d-short` | Godot toon 3D | yes (27 clips incl. cartoon3d) | `command` + X | same environment, heavier scenes |
 | `sprite-video-production` | sprite sheets → Godot film + short | yes | `hermes` (it drives Godot + models) | keep research; its render half is `godot-sprite-film` |
 | `cartoon-3d-short` | image-per-shot + ffmpeg moves | yes (27 clips) | `ffmpeg-stills` (already) | already covered by 6 stills packs; no new pack |
 | `narrated-video-from-images` | stills + narration | yes | `ffmpeg-stills` | already the 6 stills packs |
@@ -133,8 +133,8 @@ cost per look is mostly the asset adapter, not the engine:
 | `threejs-3d-short` | `3d-film` | `html-capture` | next | its page needs the `VENSTUDIO` contract and the scene spec folded into props; 13 clips of evidence exist |
 | `pov-html-engine-capture` | `pov-short` | `html-capture` | next | same adapter as above; the page already draws one frame per request |
 | `low-poly-station-short` | `transit-station` | `command` | queue | a Python renderer with a 15-clip history: needs a pinned environment (numpy/pillow) and a fixture |
-| `godot-sprite-film` | `sprite-film` | `command` | blocked | Godot linux-x64 + Xvfb + libGL. **This host is aarch64 and cannot run it**, so it can only be proved on the x64 CI runner — an owner decision, not a code problem |
-| `godot-toon-3d-short`, `sprite-video-production` | `toon-3d` | `command` | blocked | the same environment, plus 3D scene cost |
+| `godot-sprite-film` | `sprite-film` | `command` | next, unblocked | **Correction: it was proved on this host.** Godot 4.3 stable arm64 + a user-space Xvfb on `:77` + Mesa llvmpipe (`/opt/data/local/godot_env.sh`) rendered a 227 s 1920x1080 film (`/opt/data/godot_film/film/malin_kundang_godot.mp4`). What is missing is packaging: a pinned environment recipe (arm64 here, x64 with sha256 for CI) and a fixture |
+| `godot-toon-3d-short`, `sprite-video-production` | `toon-3d` | `command` | queue, after `sprite-film` | the same Godot environment; nothing new to install, but 3D scenes cost far more per frame |
 | `stickman-chikoomollian` | `stickman-story` | `command` | queue | renders with the same environment `full-frame` already installs; the engine (`ep01_robotfist/engine.py`) is story-agnostic |
 | `ascii-video` | `ascii-short` | `command` | queue | needs `numpy` in the environment recipe |
 | `manim-video` | `math-motion` | `command` | queue | needs cairo/pango, or scope it to text-only scenes |
@@ -147,5 +147,9 @@ Two rules the queue keeps:
 
 - **One look, one style.** Three Roblox kits became one pack; the Godot sprite and toon skills stay two, because they look
   different (flat sprites vs 3D scenes), not because they use different tools.
+- **Do not call a host incapable without trying its own binary.** Godot was written off here as "x64 only"; the arm64 build
+  had been rendering on this box for weeks. Blender is the one that is genuinely x86-only — Godot is not. Look for an
+  existing binary and an existing render before declaring a blocker.
+
 - **No status without evidence.** A pack enters as `draft`, becomes `lab` only when CI renders its fixture, and `trial`
   when a run exists in Studio. The `curation` array names the run; `tools/validate.mjs` refuses the claim without it.

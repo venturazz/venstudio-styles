@@ -77,8 +77,8 @@ second one; the id is not valid until `packs/<id>/` exists.
 | `stickman-chikoomollian` | `stickman-story` | Stickman Story | animation-2d | 20+ episodes; needs only the `full-frame` environment |
 | `ascii-video` | `ascii-short` | ASCII Short | motion-graphics | needs `numpy` in its environment recipe |
 | `manim-video` | `math-motion` | Math Motion | explainer | needs cairo/pango, or scope it to text-only scenes |
-| `godot-sprite-film` | `sprite-film` | Sprite Film | animation-2d | needs Godot linux-x64 + Xvfb + libGL in an environment; the runner is x64, this box is aarch64, so it cannot be proved here (owner decision) |
-| `godot-toon-3d-short`, `sprite-video-production` | `toon-3d` | Toon 3D | animation-3d | same Godot requirement, and it renders 3D scenes: a bigger environment than the sprite film |
+| `godot-sprite-film` | `sprite-film` | Sprite Film | animation-2d | needs a `command` environment with Godot + Xvfb + Mesa; the arm64 build has already rendered a 227 s film here, CI needs the x64 build pinned |
+| `godot-toon-3d-short`, `sprite-video-production` | `toon-3d` | Toon 3D | animation-3d | same Godot environment, 3D scenes: heavier per frame than the sprite film |
 | `cartoon-3d-short` | `cartoon-3d` | Cartoon 3D | animation-3d | uses a paid image model |
 | `agnes-character-video-shorts` | `character-short` | Character Short | narrative | paid model |
 | `long-form-narrated-video` | `narrated-long` | Narrated Long | narrative | paid model |
