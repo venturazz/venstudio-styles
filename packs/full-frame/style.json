@@ -1,0 +1,232 @@
+{
+  "format": 1,
+  "id": "full-frame",
+  "name": "Puppet",
+  "description": "One full-frame plate a scene, pushed and drifted by a measured camera, with a value-coloured readout chip, a callout tag and the hook burned in for the first 1.6 s. Frames drawn with Pillow.",
+  "version": "0.1.2",
+  "status": "lab",
+  "family": "narrative",
+  "formats": {
+    "supported": [
+      "short"
+    ],
+    "naturalFrame": "portrait"
+  },
+  "renderer": {
+    "engine": "command",
+    "minWorkerVersion": "0.12.0",
+    "composition": null
+  },
+  "contract": {
+    "pacing": {
+      "shotSeconds": [
+        1.5,
+        4
+      ],
+      "hookWithinMs": 1600,
+      "cutsPerMinute": [
+        12,
+        40
+      ],
+      "transitionSec": 0
+    },
+    "onScreen": {
+      "elements": [
+        "plate",
+        "counter",
+        "callout",
+        "heading"
+      ],
+      "motionTokens": [
+        "push",
+        "drift"
+      ],
+      "elementAnimation": true
+    },
+    "captions": {
+      "required": true,
+      "spec": "caption-spec-v1",
+      "safeAreaPct": 8
+    },
+    "audio": {
+      "narrated": true,
+      "targetLufs": -14,
+      "maxTruePeakDb": -1,
+      "musicPolicy": "none"
+    },
+    "assets": {
+      "model": "plates-and-diagrams",
+      "kinds": [
+        "image"
+      ],
+      "allowedSources": [
+        "upload",
+        "hermes",
+        "worker",
+        "generated"
+      ],
+      "forbidKinds": [
+        "reference-video"
+      ]
+    }
+  },
+  "portal": {
+    "beatShape": "single",
+    "qc": {
+      "minPresentationScore": 75,
+      "gates": [
+        "G-technical",
+        "G-presentation"
+      ]
+    },
+    "themes": [
+      "education",
+      "narrative",
+      "technology"
+    ],
+    "keywords": [
+      "dafiology",
+      "full frame",
+      "hud readout",
+      "callout tag",
+      "documentary short",
+      "chaptered short"
+    ],
+    "cautions": [
+      "Every scene is one still: the motion has to come from the push, the drift and the breath, never from a moving picture.",
+      "The readout chip is metadata, not a second subtitle. Its text stays short enough to fit one line at the top right.",
+      "The callout tag sits under the bar at the top left so it never covers the subject's face."
+    ],
+    "sources": []
+  },
+  "fixture": {
+    "payload": "fixtures/payload.json",
+    "expect": "fixtures/expect.json"
+  },
+  "provenance": [
+    {
+      "type": "skill",
+      "ref": "Hermes profile: skills/creative/flat-vector-explainer-video, skills/creative/stickman-chikoomollian and the ChikooTale engine at /opt/data/ep01_robotfist/engine.py (EP21-EP23, rendered 15-19 Nov 2026)",
+      "licence": "owner (written for venturazz)",
+      "notes": "The camera grammar (push that settles, 2.6/3.4 px breath, hard cuts), the value-coloured readout chip, the callout tag and the 1.6 s hook are taken from that engine, which rendered three published episodes at 720x1280. The actor rig, the story audio, the end card and the meter's event cues are out of scope in 0.1.0: this version moves plates, not sprites."
+    },
+    {
+      "type": "repo",
+      "ref": "https://github.com/dejavu-fonts/dejavu-fonts/releases/tag/version_2_37: dejavu-fonts-ttf-2.37.zip (sha256 7576310b219e04159d35ff61dd4a4ec4cdba4f35c00e002a136f00e96a908b0a, 5522795 bytes)",
+      "licence": "Bitstream Vera Fonts Copyright (DejaVu changes are in the public domain); dejavu-fonts-ttf-2.37/LICENSE is unpacked with the fonts",
+      "notes": "Downloaded by the recipe, pinned by sha256 and size, measured from the release asset itself. Nothing of it is vendored in the pack."
+    },
+    {
+      "type": "repo",
+      "ref": "https://pypi.org/project/pillow/11.3.0/: manylinux x86_64 wheels for cp311, cp312, cp313 and cp314",
+      "licence": "MIT-CMU (Pillow 11.3.0)",
+      "notes": "The eight hashes in env/requirements.txt are the digests PyPI reports for those wheels; pip installs with --require-hashes --only-binary=:all: --no-deps, so no sdist is ever built."
+    },
+    {
+      "type": "owner-note",
+      "ref": "venturazz/venstudio docs/hermes-handover.md and this repo's FORMAT.md (engine command)",
+      "licence": "owner",
+      "notes": "The first pack handed over from a look Hermes actually shipped in production, rather than a proof of the channel: the point is that a proven Hermes style now renders on a Muse worker with nothing installed by guess."
+    }
+  ],
+  "curation": [
+    {
+      "date": "2026-11-24",
+      "kind": "ci-render",
+      "ref": "venturazz/venstudio-styles CI run 45314894968 (c036e2c), job environments: env-install dafiology-pillow@1.0.0 (40.2 MB, probe 'ok pillow 11.3.0 dejavu-2.37') then render-command + check-video",
+      "result": "pass",
+      "notes": "360 frames at 1080x1920@30 in 21.3 s; check-video {width 1080, height 1920, fps 30, frames 360, durationSec 12, h264, yuv420p}. Measured 1.8 s per second of video on the runner, which is why secondsPerVideoSecond is 8, not the 30 the first draft carried."
+    }
+  ],
+  "workflow": {
+    "recipe": "image-sequence"
+  },
+  "environment": {
+    "id": "dafiology-pillow",
+    "version": "1.0.0",
+    "platforms": [
+      "linux-x64"
+    ],
+    "hosts": [
+      "github.com",
+      "objects.githubusercontent.com",
+      "release-assets.githubusercontent.com",
+      "pypi.org",
+      "files.pythonhosted.org"
+    ],
+    "requires": [
+      {
+        "tool": "python3",
+        "min": "3.11"
+      },
+      {
+        "tool": "glibc",
+        "min": "2.28"
+      }
+    ],
+    "steps": [
+      {
+        "download": {
+          "url": "https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.zip",
+          "sha256": "7576310b219e04159d35ff61dd4a4ec4cdba4f35c00e002a136f00e96a908b0a",
+          "bytes": 5522795,
+          "extract": "zip",
+          "stripComponents": 0,
+          "to": "fonts"
+        }
+      },
+      {
+        "pip": {
+          "requirements": "env/requirements.txt",
+          "python": "3.11",
+          "to": "venv"
+        }
+      }
+    ],
+    "probe": {
+      "argv": [
+        "python",
+        "{packDir}/render/probe.py",
+        "--env",
+        "{envDir}"
+      ],
+      "timeoutSec": 90,
+      "exitCode": 0,
+      "stdout": "^ok pillow 11\\.3\\.0 dejavu-2\\.37"
+    },
+    "render": {
+      "argv": [
+        "python",
+        "{packDir}/render/frames.py",
+        "--props",
+        "{props}",
+        "--out",
+        "{out}",
+        "--env",
+        "{envDir}",
+        "--in",
+        "{inDir}"
+      ],
+      "secondsPerVideoSecond": 8,
+      "output": "png-frames",
+      "captions": "worker",
+      "audio": "worker"
+    },
+    "licences": [
+      {
+        "tool": "pillow",
+        "version": "11.3.0",
+        "licence": "MIT-CMU",
+        "source": "https://pypi.org/project/pillow/11.3.0/",
+        "notes": "wheel digests from the PyPI JSON API"
+      },
+      {
+        "tool": "dejavu-fonts",
+        "version": "2.37",
+        "licence": "Bitstream Vera Fonts Copyright",
+        "source": "https://github.com/dejavu-fonts/dejavu-fonts/releases/tag/version_2_37",
+        "notes": "sha256 and size measured from the release asset"
+      }
+    ]
+  }
+}

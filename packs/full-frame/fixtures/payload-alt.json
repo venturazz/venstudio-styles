@@ -1,0 +1,202 @@
+{
+  "format": "short",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "engine": "command",
+  "transitionSec": 0,
+  "shots": [
+    {
+      "shotRef": "shot-01",
+      "assetId": "asset-shot-01",
+      "seconds": 5,
+      "motion": "none",
+      "image": "asset-shot-01.png"
+    },
+    {
+      "shotRef": "shot-02",
+      "assetId": "asset-shot-02",
+      "seconds": 4,
+      "motion": "none",
+      "image": "asset-shot-02.png"
+    },
+    {
+      "shotRef": "shot-03",
+      "assetId": "asset-shot-03",
+      "seconds": 3,
+      "motion": "none",
+      "image": "asset-shot-03.png"
+    },
+    {
+      "shotRef": "shot-04",
+      "assetId": "asset-shot-04",
+      "seconds": 5,
+      "motion": "none",
+      "image": "asset-shot-04.png"
+    },
+    {
+      "shotRef": "shot-05",
+      "assetId": "asset-shot-05",
+      "seconds": 4,
+      "motion": "none",
+      "image": "asset-shot-05.png"
+    }
+  ],
+  "narrationAssetId": "asset-narration",
+  "narrationSec": 21,
+  "durationSec": 21,
+  "targetLufs": -14,
+  "inputs": [
+    "asset-shot-01",
+    "asset-shot-02",
+    "asset-shot-03",
+    "asset-shot-04",
+    "asset-shot-05",
+    "asset-narration"
+  ],
+  "captions": [
+    {
+      "start": 0,
+      "end": 5,
+      "text": "Kios itu buka jam enam pagi, tanpa pernah terlambat sekali pun."
+    },
+    {
+      "start": 5,
+      "end": 9,
+      "text": "Yang dijual cuma dua hal: air panas dan cerita orang lewat."
+    },
+    {
+      "start": 9,
+      "end": 12,
+      "text": "Harga tehnya tidak naik sejak tahun sembilan puluh delapan."
+    },
+    {
+      "start": 12,
+      "end": 17,
+      "text": "Setiap Sabtu satu gelas dibayar dengan cerita yang lebih panjang."
+    },
+    {
+      "start": 17,
+      "end": 21,
+      "text": "Sekarang kiosnya tutup, dan tidak ada yang tahu ke mana ceritanya."
+    }
+  ],
+  "captionStyle": {
+    "fontSizePx": 54,
+    "minFontSizePx": 44,
+    "maxFontSizePx": 54,
+    "lineSpacingPx": 18,
+    "outlinePx": 6,
+    "shadowPx": 4,
+    "marginXPx": 44,
+    "marginBottomPx": 150,
+    "maxWidthPx": 984,
+    "narrowFace": false,
+    "safeAreaPct": 8
+  },
+  "scenes": [
+    {
+      "shotRef": "shot-01",
+      "seconds": 5,
+      "beatRole": "hook",
+      "elements": [
+        {
+          "kind": "plate"
+        },
+        {
+          "kind": "heading",
+          "text": "Enam pagi, setiap hari"
+        },
+        {
+          "kind": "counter",
+          "text": "HARI 100%"
+        }
+      ],
+      "tokens": [
+        "push"
+      ],
+      "camera": true
+    },
+    {
+      "shotRef": "shot-02",
+      "seconds": 4,
+      "beatRole": "body",
+      "elements": [
+        {
+          "kind": "plate"
+        },
+        {
+          "kind": "callout",
+          "text": "dua menu saja"
+        }
+      ],
+      "tokens": [
+        "push"
+      ],
+      "camera": true
+    },
+    {
+      "shotRef": "shot-03",
+      "seconds": 3,
+      "beatRole": "body",
+      "elements": [
+        {
+          "kind": "plate"
+        },
+        {
+          "kind": "counter",
+          "text": "HARGA 0%"
+        },
+        {
+          "kind": "callout",
+          "text": "sejak 1998"
+        }
+      ],
+      "tokens": [
+        "drift"
+      ],
+      "camera": true
+    },
+    {
+      "shotRef": "shot-04",
+      "seconds": 5,
+      "beatRole": "body",
+      "elements": [
+        {
+          "kind": "plate"
+        },
+        {
+          "kind": "callout",
+          "text": "dibayar dengan cerita"
+        }
+      ],
+      "tokens": [
+        "push",
+        "drift"
+      ],
+      "camera": true
+    },
+    {
+      "shotRef": "shot-05",
+      "seconds": 4,
+      "beatRole": "outro",
+      "elements": [
+        {
+          "kind": "plate"
+        },
+        {
+          "kind": "counter",
+          "text": "TUTUP 100%"
+        },
+        {
+          "kind": "callout",
+          "text": "tidak ada yang tahu"
+        }
+      ],
+      "tokens": [
+        "drift"
+      ],
+      "camera": true
+    }
+  ]
+}

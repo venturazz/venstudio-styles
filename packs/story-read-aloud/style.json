@@ -1,7 +1,7 @@
 {
   "format": 1,
   "id": "story-read-aloud",
-  "name": "Story read-aloud (adapted, original)",
+  "name": "Read-Aloud",
   "description": "A first-person story rewritten as original narration over stills.",
   "version": "1.0.1",
   "status": "trial",
