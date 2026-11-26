@@ -1,14 +1,13 @@
 {
   "format": 1,
   "id": "voxel-build-skill",
-  "name": "Minecraft (skill)",
-  "description": "The original research trial: Hermes renders a cottage with the /minecraft skill installed there. Retired because a Hermes render is never published; voxel-build renders the same look on a worker.",
-  "version": "0.2.0",
-  "status": "retired",
+  "name": "Minecraft Cottage (Hermes /minecraft)",
+  "description": "The original /minecraft look on Hermes: one cottage builds itself block by block, dust, warm windows and a pixel word. Not the Muse village: a different style, kept as its own. Research only, never published.",
+  "version": "0.3.0",
+  "status": "trial",
   "formerly": [
     "hermes-minecraft"
   ],
-  "upgradedTo": "voxel-build",
   "family": "game-style",
   "formats": {
     "supported": [
@@ -134,7 +133,7 @@
       "kind": "research-source",
       "ref": "https://github.com/artemnovitckii/claude-animation-skills@86f70106c9aeae1334184467da5776c533ada3bc (skills/minecraft/SKILL.md); owner report: installed in Hermes and working",
       "result": "pass",
-      "notes": "Evidence for the original trial of a hermes pack. Superseded on 2026-11-25 by voxel-build@0.3.0, which renders the same look with the html-capture engine, so this pack is retired: it stays for the record of how the look entered the repo, and to keep the /minecraft skill credited and pinned."
+      "notes": "Evidence for this hermes pack: the upstream source and the owner's report that /minecraft renders in Hermes. Kept live as a trial so the cottage look can be chosen next to the Muse pack (Minecraft Village), which draws a village rather than this cottage; a Hermes render is never published."
     }
   ],
   "hermes": {

@@ -162,8 +162,10 @@ test("one research pack per claude-animation-skills skill, pinned, credited and 
     "stick-figure": "stick-figure",
     "zach-d-films": "what-if-3d",
   };
-  // Two of them are superseded by a worker pack that renders the same look, so they sit at retired; the rest are live trials.
-  const RETIRED = ["graph", "minimalistic-graphics", "minecraft"];
+  // Two of them are superseded by a worker pack that renders the same look, so they sit at retired. /minecraft stays a
+  // live trial: the Muse pack draws a village of kit structures, not the cottage this skill builds, so it is a different
+  // look rather than a replacement (the owner picks one or the other).
+  const RETIRED = ["graph", "minimalistic-graphics"];
   for (const [skill, id] of Object.entries(PACKS)) {
     const s = load(id);
     const status = RETIRED.includes(skill) ? "retired" : "trial";
