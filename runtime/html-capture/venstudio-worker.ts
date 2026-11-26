@@ -553,6 +553,21 @@ export function sampleFrameArgs(input: string, atSec: number, output: string): s
   return ["-y", "-hide_banner", "-loglevel", "error", "-ss", String(atSec), "-i", input, "-frames:v", "1", "-vf", "scale=-2:480", "-q:v", "4", output];
 }
 
+/**
+ * How alike two pictures are, 0..1: the preview still and the frame the video actually has where that scene sits. ffmpeg
+ * scales both to the same width first, so a JPEG still and a video frame of the same moment compare directly.
+ */
+export function ssimArgs(a: string, b: string): string[] {
+  return ["-hide_banner", "-nostats", "-i", a, "-i", b, "-filter_complex", "[0:v]scale=320:-2,format=gray[x];[1:v]scale=320:-2,format=gray[y];[x][y]ssim", "-f", "null", "-"];
+}
+
+/** The `All:0.98765` of an ssim run, or null when ffmpeg printed none. */
+export function parseSsim(stderr: string): number | null {
+  const m = /All:([0-9.]+)/.exec(stderr);
+  const v = m ? Number(m[1]) : NaN;
+  return Number.isFinite(v) && v >= 0 && v <= 1 ? Math.round(v * 1000) / 1000 : null;
+}
+
 export function runCapture(cmd: string, args: string[], signal: AbortSignal): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
@@ -734,6 +749,34 @@ export const handlers: Record<string, Handler> = {
     await ctx.upload("qc.json", out, "application/json");
     // 0.10.0: a few evenly spaced stills for the presentation advisory (the portal asks Hermes to look at them).
     // Only when the payload asks; small JPEGs, uploaded as frame-01.jpg ... beside qc.json.
+    // The approved stills, checked against the video the render produced: the preview is a promise about the look, and
+    // a video that does not keep it must not pass QC. The portal sends where each still sits on the render's own
+    // timeline, so this compares the same scene at its middle, not two timestamps that happen to be close.
+    const compare = Array.isArray(ctx.job.payload.compareStills)
+      ? (ctx.job.payload.compareStills as unknown[])
+          .flatMap((raw) => {
+            const o = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+            const assetId = typeof o.assetId === "string" && /^[0-9a-f-]{36}$/i.test(o.assetId) ? o.assetId : null;
+            const atSec = typeof o.atSec === "number" && Number.isFinite(o.atSec) && o.atSec >= 0 ? o.atSec : null;
+            return assetId && atSec !== null ? [{ assetId, atSec }] : [];
+          })
+          .slice(0, 6)
+      : [];
+    const previewMatch: Array<{ atSec: number; ssim: number | null }> = [];
+    for (const [k, c] of compare.entries()) {
+      const ref = path.join(ctx.workDir, `ref-${String(k + 1).padStart(2, "0")}.jpg`);
+      const got = path.join(ctx.workDir, `cmp-${String(k + 1).padStart(2, "0")}.png`);
+      ctx.progress(0.9 + (k / Math.max(1, compare.length)) * 0.09, `Checking the render against still ${k + 1} of ${compare.length}`);
+      try {
+        await ctx.download(c.assetId, ref);
+        await runCapture(ffmpegPath(), ["-y", "-hide_banner", "-loglevel", "error", "-ss", String(c.atSec), "-i", input, "-frames:v", "1", got], ctx.signal);
+        const ssim = parseSsim((await runCapture(ffmpegPath(), ssimArgs(ref, got), ctx.signal)).stderr);
+        previewMatch.push({ atSec: c.atSec, ssim });
+      } catch (err) {
+        if (ctx.signal.aborted) throw err;
+        previewMatch.push({ atSec: c.atSec, ssim: null });
+      }
+    }
     const times = sampleFrameTimes(ctx.job.payload.sampleFrames, probe.durationSec);
     const sampledFrames: Array<{ name: string; atSec: number }> = [];
     for (const [k, at] of times.entries()) {
@@ -745,7 +788,7 @@ export const handlers: Record<string, Handler> = {
       await ctx.upload(name, file, "image/jpeg");
       sampledFrames.push({ name, atSec: at });
     }
-    return { ...doc, ...(times.length > 0 ? { sampledFrames } : {}) };
+    return { ...doc, ...(times.length > 0 ? { sampledFrames } : {}), ...(previewMatch.length > 0 ? { previewMatch } : {}) };
   },
 
   async "render-preview"(ctx) {
@@ -1900,9 +1943,13 @@ function shotChain(spec: RenderSpec, tl: StillsTimeline, i: number, input: numbe
   // With fades, every shot but the last runs XFADE_PAD_FRAMES past its fade. xfade drops those frames; without
   // them an ffmpeg whose first input ends inside the fade ends the whole output there.
   const length = tl.fade && i < spec.shots.length - 1 ? frames + XFADE_PAD_FRAMES : frames;
+  // A trimmed chain loses the frame rate ffmpeg needs to name: setpts leaves the link's rate at 1/0, and ffmpeg 7's
+  // xfade refuses such an input ("The inputs needs to be a constant frame rate"), where ffmpeg 9 infers it. Only a
+  // chain that trims needs the trailing fps filter; adding it to every chain would re-round the untrimmed shots.
+  const rate = extra ? `,fps=${fps}` : "";
   return (
     `[${input}:v]scale=${bigW}:${bigH}:force_original_aspect_ratio=increase,crop=${bigW}:${bigH},setsar=1,` +
-    `zoompan=${zoompanFor(spec.shots[i].motion, frames)}:d=${length}:s=${w}x${h}:fps=${fps},format=yuv420p${extra}[${label}]`
+    `zoompan=${zoompanFor(spec.shots[i].motion, frames)}:d=${length}:s=${w}x${h}:fps=${fps},format=yuv420p${extra}${rate}[${label}]`
   );
 }
 
@@ -4644,7 +4691,12 @@ export const PACK_SHOT_TIMEOUT_MS = 90_000;
  * preview is a check, not a render: it stops drawing at this budget and keeps the stills it got.
  */
 export const STILL_DRAW_BUDGET_MS = 3 * 60_000;
-export const STILL_MAX_FRAMES = 600;
+/**
+ * The frame a preview refuses to walk to (6.7 minutes at 30 fps): a guard against an absurd ask, not a budget. A light
+ * page draws a thousand frames in seconds, and stopping at a flat 600 silently dropped the last stills of any video
+ * longer than 20 s; the time budget is what actually bounds a heavy page.
+ */
+export const STILL_FRAME_CEILING = 12_000;
 
 /** An entry of html/packs.json, written by the portal's bundle builder (apps/portal/lib/install-bundle.ts). */
 export interface HtmlPackRef {
@@ -5546,6 +5598,11 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<HtmlCaptureRes
       // captured. Bounded on purpose — a heavy 3D page costs seconds per frame, and a preview must not hold the worker
       // for half an hour to prove the look is right.
       const last = stillFrames[stillFrames.length - 1];
+      if (last > STILL_FRAME_CEILING) {
+        throw new NonRetryableError(
+          `The last still is at frame ${last}, past the ${STILL_FRAME_CEILING}-frame ceiling for a preview; ask for stills inside the first ${Math.round(STILL_FRAME_CEILING / o.fps)} s.`,
+        );
+      }
       const shotTimeout = pageMode ? limits.frameTimeoutMs : PACK_SHOT_TIMEOUT_MS;
       const drawing = Date.now();
       let k = 0;
@@ -5554,10 +5611,6 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<HtmlCaptureRes
       for (let f = 0; f <= last; f++) {
         if (Date.now() - drawing > STILL_DRAW_BUDGET_MS) {
           stopped = `stopped drawing after ${Math.round(STILL_DRAW_BUDGET_MS / 1000)} s at frame ${drawn} of ${last}`;
-          break;
-        }
-        if (f >= STILL_MAX_FRAMES) {
-          stopped = `stopped at the ${STILL_MAX_FRAMES}-frame budget, the last still asked for was frame ${last}`;
           break;
         }
         await evaluate(`window.__venstudio.frame(${f}, ${o.fps})`, limits.frameTimeoutMs, `renderFrame(${f})`);
