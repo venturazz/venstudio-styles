@@ -249,7 +249,8 @@ const page = {
       // Still answer the job's shape — and only that: the worker checks these four numbers and nothing else. Nothing is
       // drawn and nothing is claimed about the picture.
       draw(0);
-      return { totalFrames, fps: FPS, width: W, height: H };
+      // The flag the worker reads (0.19.1): a still or a video of text on a blank plate is not the look.
+      return { totalFrames, fps: FPS, width: W, height: H, degraded: true };
     }
     renderer.setPixelRatio(1);
     renderer.setSize(W / 2, H / 2, false);
