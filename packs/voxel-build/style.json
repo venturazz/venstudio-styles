@@ -4,7 +4,7 @@
   "name": "Minecraft Village (Muse)",
   "description": "A village builds itself block by block on a Muse worker: voxel structures from the kit, a cutting plane sweeping up, three camera moves, a pixel pay-off word and a caption. The Muse version; the cottage is another style.",
   "version": "0.3.2",
-  "status": "lab",
+  "status": "trial",
   "family": "game-style",
   "formats": {
     "supported": [
@@ -156,6 +156,13 @@
       "ref": "venturazz/venstudio-styles CI run 45528167102 (branch feat/voxel-worker-pack, commit 014f39f), job remotion: \"Render every html-capture pack's fixture with the vendored worker, then check size, fps, duration and frame count\"",
       "result": "pass",
       "notes": "The pack rendered in Chrome Headless Shell through the vendored worker: 1080x1920, 24 fps, 6 s, 144 frames, H.264. The page draws with WebGL and its own vendored textures; the only network it could reach is blocked by the capture sandbox."
+    },
+    {
+      "date": "2026-11-26",
+      "kind": "qc",
+      "result": "pass",
+      "ref": "Owner report: a Minecraft run rendered to the end on a Muse worker with this pack (html-capture), 2026-11-26",
+      "notes": "The video is the kit's village (structures by shot index), not the /minecraft cottage; that look stays its own style. Owner noted the difference, which is now said in the description and in the pack it is compared with."
     }
   ],
   "workflow": {
