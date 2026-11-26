@@ -1145,7 +1145,7 @@ export interface RenderSpec {
   transitionSec: number;
   /** What an animating engine draws. Null for the stills engine. */
   scenePlan: RenderScenePlan | null;
-  shots: Array<{ shotRef: string; assetId: string; seconds: number; motion: RenderMotion }>;
+  shots: Array<{ shotRef: string; assetId: string; seconds: number; motion: RenderMotion; intent?: Record<string, string> }>;
   narrationAssetId: string;
   /** Length of the narration as it plays, after narrationTempo. */
   narrationSec: number;
@@ -4853,8 +4853,11 @@ export interface HtmlCaptureProps {
   durationSec: number;
   totalFrames: number;
   transitionSec: number;
-  /** One per shot, same order; `image` is a URL relative to the page (../in/<file>) or null. */
-  shots: Array<{ shotRef: string; seconds: number; image: string | null }>;
+  /**
+   * One per shot, same order; `image` is a URL relative to the page (../in/<file>) or null. `intent` is the pack's own
+   * story vocabulary filled in (contract.story), passed through untouched: the page decides what its words mean.
+   */
+  shots: Array<{ shotRef: string; seconds: number; image: string | null; intent?: Record<string, string> }>;
   timeline: XfadeTimeline;
   scenes: RenderScene[];
   /** Captions to draw. Empty unless the pack declares drawsCaptions: otherwise ffmpeg burns them. */
@@ -4881,7 +4884,13 @@ export function buildHtmlCaptureProps(spec: RenderSpec, files: { images: Array<s
     durationSec: spec.durationSec,
     totalFrames: timeline.totalFrames,
     transitionSec: plan.transitionSec,
-    shots: spec.shots.map((s, i) => ({ shotRef: s.shotRef, seconds: s.seconds, image: files.images[i] })),
+    shots: spec.shots.map((s, i) => ({
+      shotRef: s.shotRef,
+      seconds: s.seconds,
+      image: files.images[i],
+      // The pack's story words, untouched: a page that knows the vocabulary draws them, every other page ignores them.
+      ...(s.intent ? { intent: { ...s.intent } } : {}),
+    })),
     timeline,
     scenes: spec.scenePlan.scenes.map((s) => ({ ...s, elements: s.elements.map((e) => ({ ...e })), tokens: [...s.tokens], layers: s.layers.map((l) => ({ ...l })) })),
     captions: files.drawsCaptions ? spec.captions.map((c) => ({ ...c })) : [],
