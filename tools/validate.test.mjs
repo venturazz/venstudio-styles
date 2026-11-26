@@ -500,3 +500,19 @@ test("workflow.skip drops only a stage the recipe calls optional", () => {
     "qc",
   ]);
 });
+test("contract.story: the words a look understands, and only well-formed ones", () => {
+  const voxel = load("voxel-build");
+  // The shipped village: eight structures, three things a shot can do to one, two things the camera can hold.
+  assert.deepEqual(Object.keys(voxel.contract.story), ["structure", "action", "focus"]);
+  assert.deepEqual(voxel.contract.story.action, ["build", "damage", "idle"]);
+  assert.deepEqual(V.validateStyle(voxel), []);
+  const story = (v) => V.validateStyle({ ...clone(voxel), contract: { ...voxel.contract, story: v } });
+  assert.ok(has(story({ structure: [] }), /contract\.story\.structure must be a list of 1\.\.24 values/));
+  assert.ok(has(story({ structure: ["Church"] }), /contract\.story\.structure: "Church" is not a value/));
+  assert.ok(has(story({ structure: ["church", "church"] }), /contract\.story\.structure: "church" is listed twice/));
+  assert.ok(has(story({ Structure: ["church"] }), /contract\.story: "Structure" is not a slot name/));
+  assert.ok(has(story({}), /contract\.story must declare 1\.\.12 slots, not 0/));
+  assert.ok(has(story("church"), /contract\.story must be an object of slot -> list of values/));
+  // A slot a pack invents is fine: that is the point of a vocabulary rather than a fixed schema.
+  assert.deepEqual(story({ chart: ["line", "bar"], palette: ["warm", "cold"] }), []);
+});

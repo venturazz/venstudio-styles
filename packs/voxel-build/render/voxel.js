@@ -2,7 +2,9 @@
  *
  * Locked by this file: real block textures from the kit, the clipping-plane sweep that makes a structure appear block by
  * block from the ground up, the three camera moves, the pixel typeface, the lower-third caption plate and the pay-off word.
- * Left open to the request: how many shots, their lengths, the words on screen, the motion per shot.
+ * Left open to the request: how many shots, their lengths, the words on screen, the motion per shot, and — since the
+ * pack declares a vocabulary (style.json contract.story) — which structure each shot shows, what happens to it
+ * (build, damage, idle) and whether the camera holds the building or the villager beside it.
  *
  * Everything here is a pure function of the frame number. No clock, no animation loop, no random: ask for frame 91 twice
  * and the same pixels come back, which is why this chain is determinism grade A and can be diffed frame by frame.
@@ -13,9 +15,17 @@ import "./assets/mcrig.js";
 import "./assets/mcvoxel.js";
 import { font as pixelFont, textures as embedded } from "./assets/blob.js";
 
-// Fixed rotation, simplest first: a short that starts on a well and ends on a library reads as a village growing. The
-// structures come from the kit; the order is the style's business, not the writer's.
-const ROTATION = ["well", "farm", "medium_house", "blacksmith", "church", "tavern", "large_house", "library"];
+// The kit: the structures this look can build. The writer's story picks one per shot (props.shots[i].intent.structure);
+// this list is the boundary the portal validates against and the fallback when a shot names nothing.
+const KIT = ["well", "farm", "medium_house", "blacksmith", "church", "tavern", "large_house", "library"];
+// Older runs carry no intent at all: they keep the fixed rotation, so a video recorded before the vocabulary existed
+// still renders exactly as it did.
+const ROTATION = KIT;
+
+/** What a shot can do to its structure: raised from the ground, taken apart from the top, or just standing there. */
+const ACTIONS = { build: "build", damage: "damage", idle: "idle" };
+/** What the camera holds: the building, or the villager who lives beside it. */
+const FOCUS = { structure: "structure", villager: "villager" };
 
 // A writer asks for "zoom in"; this is what a zoom is in a voxel village. Unknown motions fall back to the push-in.
 const MOTIONS = {
@@ -81,6 +91,14 @@ function wordFor(shot, text) {
 function cameraFor(cam, rig, p) {
   const { camera, mid, top, radius } = rig;
   const e = ease(p);
+  // A shot that holds the villager looks at the villager: closer, lower, and off the building's axis.
+  if (rig.focus === "villager" && rig.villager) {
+    const v = rig.villager;
+    const matter = radius * 0.42;
+    camera.position.set(v.x + matter * (0.55 + 0.1 * e), v.y + 4.2, v.z + matter * (0.95 - 0.2 * e));
+    camera.lookAt(v.x, v.y + 1.5, v.z);
+    return;
+  }
   if (cam === "orbit") {
     const a = -0.9 + e * 1.1;
     camera.position.set(mid.x + Math.sin(a) * radius, top * 1.05 + 2.5, mid.z + Math.cos(a) * radius);
@@ -93,7 +111,7 @@ function cameraFor(cam, rig, p) {
 }
 
 /** Build one shot's world: its structure on real grass, plus a villager for scale. */
-async function buildScene(THREE_, rig, struct, cam) {
+async function buildScene(THREE_, rig, struct, cam, action, focus) {
   const scene = new THREE_.Scene();
   scene.background = new THREE_.Color(0x9fc9e8);
   scene.fog = new THREE_.Fog(0x9fc9e8, 90, 220);
@@ -132,16 +150,18 @@ async function buildScene(THREE_, rig, struct, cam) {
   const mid = new THREE_.Vector3((box.min.x + box.max.x) / 2, 0, (box.min.z + box.max.z) / 2);
   const radius = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 0.9 + 8;
 
+  let villagerAt = null;
   try {
     const villager = await rig.load("assets/vendor/villager.json", "assets/vendor/mobs_mc_villager.png", { height: 1.95 });
     villager.group.position.set(mid.x + 3.4, 0, mid.z + 2.6);
     villager.group.rotation.y = -1.1;
     scene.add(villager.group);
+    villagerAt = { x: villager.group.position.x, y: villager.group.position.y, z: villager.group.position.z };
   } catch {
     // A villager that will not load is not a reason to lose the shot; the village just stands empty.
   }
 
-  return { scene, camera, mid, top, radius, cam, struct, sweep: top + 1.5 };
+  return { scene, camera, mid, top, radius, cam, struct, sweep: top + 1.5, action, focus, villager: villagerAt };
 }
 
 /** Draw exactly one second of the timeline. The only entry point that touches pixels. */
@@ -172,8 +192,10 @@ function draw(t) {
   const p = shot.seconds > 0 ? clamp01(local / shot.seconds) : 1;
 
   // The build: the structure is whole from the first frame, a plane near the ground hides the rest. Cutting is cheaper
-  // than animating blocks and cannot drift between frames.
-  vox.clip.constant = -0.2 + p * rig.sweep;
+  // than animating blocks and cannot drift between frames. What the plane does is the shot's own intent: a structure
+  // raised from the ground, taken apart from the top, or standing still.
+  const reveal = rig.action === "damage" ? 1 - 0.85 * p : rig.action === "idle" ? 1 : p;
+  vox.clip.constant = -0.2 + reveal * rig.sweep;
   cameraFor(rig.cam, rig, p);
 
   if (active !== index) {
@@ -220,12 +242,18 @@ const page = {
     let at = 0;
     shots = list.map((s, i) => {
       const seconds = Math.max(0.5, Number(s.seconds) || 3);
+      // The story is the request's: the scene spec names a structure, an action and what the camera holds. Anything the
+      // kit does not know falls back to the fixed rotation, so an old run or a stale payload still renders.
+      const intent = s.intent && typeof s.intent === "object" ? s.intent : {};
+      const named = typeof intent.structure === "string" ? intent.structure : "";
       const shot = {
         start: at,
         seconds,
         motion: s.motion ?? "zoom-in",
         caption: s.caption ?? null,
-        struct: ROTATION[i % ROTATION.length],
+        struct: KIT.includes(named) ? named : ROTATION[i % ROTATION.length],
+        action: ACTIONS[intent.action] ?? "build",
+        focus: FOCUS[intent.focus] ?? "structure",
       };
       at += seconds;
       return shot;
@@ -269,7 +297,7 @@ const page = {
     const made = [];
     for (const shot of shots) {
       const cam = MOTIONS[shot.motion] ?? "push-in";
-      made.push(await buildScene(THREE, rig, shot.struct, cam));
+      made.push(await buildScene(THREE, rig, shot.struct, cam, shot.action, shot.focus));
     }
     scenes = made;
     active = -1;

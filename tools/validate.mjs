@@ -233,6 +233,39 @@ function checkKeys(obj, allowed, at, issues) {
   for (const k of Object.keys(obj)) if (!allowed.includes(k)) issues.push(`${at}: unknown field "${k}"`);
 }
 
+/**
+ * contract.story: the words this look understands, one list per slot (structure, action, focus, or anything a pack
+ * invents). The scene spec must fill every slot with one of these values, so the list is a promise the pack can keep.
+ */
+const STORY_SLOT = /^[a-z][a-z0-9-]{0,23}$/;
+const STORY_VALUE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+
+function checkStory(v, issues) {
+  if (!isRecord(v)) {
+    issues.push("contract.story must be an object of slot -> list of values");
+    return;
+  }
+  const slots = Object.keys(v);
+  if (slots.length === 0 || slots.length > 12) issues.push(`contract.story must declare 1..12 slots, not ${slots.length}`);
+  for (const slot of slots) {
+    if (!STORY_SLOT.test(slot)) {
+      issues.push(`contract.story: "${slot}" is not a slot name (lowercase letters, digits and dashes, starting with a letter)`);
+      continue;
+    }
+    const values = v[slot];
+    if (!Array.isArray(values) || values.length === 0 || values.length > 24) {
+      issues.push(`contract.story.${slot} must be a list of 1..24 values`);
+      continue;
+    }
+    const seen = new Set();
+    for (const x of values) {
+      if (typeof x !== "string" || !STORY_VALUE.test(x)) issues.push(`contract.story.${slot}: ${JSON.stringify(x)} is not a value (lowercase letters, digits, dash or underscore)`);
+      else if (seen.has(x)) issues.push(`contract.story.${slot}: "${x}" is listed twice`);
+      seen.add(x);
+    }
+  }
+}
+
 function checkList(v, allowed, at, issues, { min = 1 } = {}) {
   if (!Array.isArray(v) || v.length < min || v.length > LIMITS.list) {
     issues.push(`${at} must be a list of ${min}..${LIMITS.list} entries`);
@@ -321,7 +354,8 @@ export function validateStyle(style, { dirName, files } = {}) {
   const c = style.contract;
   if (!isRecord(c)) issues.push("contract must be an object");
   else {
-    checkKeys(c, ["pacing", "onScreen", "captions", "audio", "assets"], "contract", issues);
+    checkKeys(c, ["pacing", "onScreen", "captions", "audio", "assets", "story"], "contract", issues);
+    if (c.story !== undefined) checkStory(c.story, issues);
     const p = c.pacing;
     if (!isRecord(p)) issues.push("contract.pacing must be an object");
     else {
