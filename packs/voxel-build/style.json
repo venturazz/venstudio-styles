@@ -3,7 +3,7 @@
   "id": "voxel-build",
   "name": "Minecraft Village (Muse)",
   "description": "A village builds itself block by block on a Muse worker: voxel structures from the kit, a cutting plane sweeping up, three camera moves, a pixel pay-off word and a caption. The Muse version; the cottage is another style.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "status": "trial",
   "family": "game-style",
   "formats": {

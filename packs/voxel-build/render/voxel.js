@@ -89,25 +89,31 @@ function wordFor(shot, text) {
 }
 
 function cameraFor(cam, rig, p) {
-  const { camera, mid, top, radius } = rig;
+  const { camera, center, dist } = rig;
   const e = ease(p);
+  const { x, z } = center;
+  const h = center.y;
   // A shot that holds the villager looks at the villager: closer, lower, and off the building's axis.
   if (rig.focus === "villager" && rig.villager) {
     const v = rig.villager;
-    const matter = radius * 0.42;
-    camera.position.set(v.x + matter * (0.55 + 0.1 * e), v.y + 4.2, v.z + matter * (0.95 - 0.2 * e));
+    // A villager is 1.95 blocks tall: far enough to keep the building in shot, close enough that the villager reads.
+    const matter = Math.max(4.5, Math.min(9, dist * 0.18));
+    camera.position.set(v.x + matter * (0.55 + 0.1 * e), v.y + 3.6, v.z + matter * (0.95 - 0.2 * e));
     camera.lookAt(v.x, v.y + 1.5, v.z);
     return;
   }
   if (cam === "orbit") {
     const a = -0.9 + e * 1.1;
-    camera.position.set(mid.x + Math.sin(a) * radius, top * 1.05 + 2.5, mid.z + Math.cos(a) * radius);
+    camera.position.set(x + Math.sin(a) * dist, h + dist * 0.28, z + Math.cos(a) * dist);
   } else if (cam === "crane") {
-    camera.position.set(mid.x + radius * 0.75, top * 0.35 + 2 + e * top * 0.8, mid.z + radius * 0.75);
+    // From below the eaves up to eye level, always far enough that nothing leaves the frame.
+    camera.position.set(x + dist * 0.6, h * 0.45 + dist * (0.08 + 0.22 * e), z + dist * 0.72);
   } else {
-    camera.position.set(mid.x + radius * 0.5, top * 0.75 + 2, mid.z + radius * (1.15 - 0.45 * e));
+    // A real push-in: the building is whole at the cut, and the move ends closer than it started.
+    const d = dist * (1 - 0.34 * e);
+    camera.position.set(x + d * 0.34, h + d * 0.2, z + d * 0.93);
   }
-  camera.lookAt(mid.x, top * 0.42, mid.z);
+  camera.lookAt(x, h, z);
 }
 
 /** Build one shot's world: its structure on real grass, plus a villager for scale. */
@@ -148,12 +154,26 @@ async function buildScene(THREE_, rig, struct, cam, action, focus) {
   const box = new THREE_.Box3().setFromObject(body);
   const top = Math.max(2, box.max.y);
   const mid = new THREE_.Vector3((box.min.x + box.max.x) / 2, 0, (box.min.z + box.max.z) / 2);
-  const radius = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 0.9 + 8;
+  // Framing: the whole structure has to fit, tower and all. Distance comes from the bounding sphere and the narrower of
+  // the two fields of view — a portrait frame has a much narrower one horizontally, which is what cropped the tall kit
+  // buildings into unnamed wall fragments.
+  const size = new THREE_.Vector3().subVectors(box.max, box.min);
+  const center = new THREE_.Vector3((box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, (box.min.z + box.max.z) / 2);
+  // Read the camera defensively: a stand-in DOM (the pack's own test) has a camera without fov, and a NaN distance here
+  // would silently blank the frame instead of failing loudly.
+  const fov = Number(camera.fov) > 1 ? Number(camera.fov) : 48;
+  const vFov = (fov * Math.PI) / 180;
+  const aspect = Number(W) > 0 && Number(H) > 0 ? W / H : 9 / 16;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+  const sphere = 0.5 * Math.hypot(size.x, size.y, size.z);
+  const fit = (sphere / Math.sin(Math.min(vFov, hFov) / 2)) * 1.15;
+  const dist = Number.isFinite(fit) && fit > 0 ? fit : Math.max(size.x, size.y, size.z) * 2.2;
 
   let villagerAt = null;
   try {
     const villager = await rig.load("assets/vendor/villager.json", "assets/vendor/mobs_mc_villager.png", { height: 1.95 });
-    villager.group.position.set(mid.x + 3.4, 0, mid.z + 2.6);
+    // Outside the footprint: a villager set 3.4 blocks from the centre of a 13-block church stands inside its wall.
+    villager.group.position.set(box.max.x + 2.6, 0, box.max.z + 1.8);
     villager.group.rotation.y = -1.1;
     scene.add(villager.group);
     villagerAt = { x: villager.group.position.x, y: villager.group.position.y, z: villager.group.position.z };
@@ -161,7 +181,7 @@ async function buildScene(THREE_, rig, struct, cam, action, focus) {
     // A villager that will not load is not a reason to lose the shot; the village just stands empty.
   }
 
-  return { scene, camera, mid, top, radius, cam, struct, sweep: top + 1.5, action, focus, villager: villagerAt };
+  return { scene, camera, mid, top, center, dist, radius: dist, cam, struct, sweep: top + 1.5, action, focus, villager: villagerAt };
 }
 
 /** Draw exactly one second of the timeline. The only entry point that touches pixels. */
