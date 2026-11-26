@@ -110,7 +110,12 @@ Rules the validator applies:
   `scene-spec` needs engine `html-capture`, or `remotion-2d` with element animation; `hermes-skill` needs engine
   `hermes`; `html-design` needs engine `html-capture`. `hermes.voice: "skill"` only goes with `hermes-skill` and
   `project` mode.
-- `workflow.review` names known stage kinds of this pack's own list (no repeats). No other override exists.
+- `workflow.review` names known stage kinds of this pack's own list (no repeats).
+- `workflow.skip` names stage kinds this pack leaves out. Only a stage the recipe calls **optional** may be skipped, and
+  a stage cannot be both skipped and reviewed. Today `preview` is optional in `scene-spec`: a pack whose page costs
+  seconds per frame to photograph (a WebGL scene built every frame) runs Idea → Research → Script → Scene spec → Voice
+  → Video → Quality check, and the look is judged on the video. A light page keeps the preview — it is the cheap gate
+  that catches a broken page before the voice and the render.
 
 Without `workflow`, the recipe is inferred from the engine and asset model: `hermes` gives `hermes-skill`,
 `html-capture` with plates and diagrams gives `scene-spec`, anything else gives `image-sequence`. `html-design` is never

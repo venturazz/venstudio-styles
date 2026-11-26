@@ -3,7 +3,7 @@
   "id": "voxel-build",
   "name": "Minecraft",
   "description": "A village builds itself block by block: real voxel structures on grass, a cutting plane sweeping upward, three camera moves, a pixel pay-off word and a caption plate. The look is fixed; the request sets shots, words and motion.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "status": "lab",
   "family": "game-style",
   "formats": {
@@ -162,6 +162,9 @@
     "recipe": "scene-spec",
     "review": [
       "scene-spec"
+    ],
+    "skip": [
+      "preview"
     ]
   }
 }

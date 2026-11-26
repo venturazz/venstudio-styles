@@ -468,3 +468,33 @@ test("html-design: research only, html-capture only, at most trial, the owner re
   // research-source still never stands in for other packs' CI render.
   assert.ok(has(V.validateStyle({ ...clone(load("probe-line-graph")), curation: [{ date: "2026-11-22", kind: "research-source", ref: "x", result: "pass", notes: "" }] }), /research-source is evidence for hermes packs \(and html-design packs\) only/));
 });
+
+test("workflow.skip drops only a stage the recipe calls optional", () => {
+  const voxel = load("voxel-build");
+  // The 3D page costs seconds per frame to photograph, so this pack runs without the still-frame preview.
+  assert.deepEqual(V.workflowStages(voxel), ["idea", "research", "script", "scene-spec", "voice", "render", "qc"]);
+  assert.deepEqual(V.validateStyle(voxel), []);
+  // A pack that skips a stage its recipe needs is refused by name.
+  assert.ok(
+    has(V.validateStyle({ ...clone(voxel), workflow: { recipe: "scene-spec", skip: ["qc"] } }), /workflow\.skip: qc is not optional in scene-spec/),
+  );
+  // Skipping and reviewing the same stage is a contradiction.
+  assert.ok(
+    has(
+      V.validateStyle({ ...clone(voxel), workflow: { recipe: "scene-spec", review: ["preview"], skip: ["preview"] } }),
+      /workflow\.skip: preview is also in workflow\.review/,
+    ),
+  );
+  // The preview stays for every pack that does not ask to drop it.
+  assert.ok(V.workflowStages(load("line-graph")).includes("preview"));
+  assert.deepEqual(V.workflowStages({ ...clone(voxel), workflow: undefined, renderer: voxel.renderer }), [
+    "idea",
+    "research",
+    "script",
+    "scene-spec",
+    "preview",
+    "voice",
+    "render",
+    "qc",
+  ]);
+});

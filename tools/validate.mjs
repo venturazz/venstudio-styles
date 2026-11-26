@@ -90,7 +90,7 @@ export const RECIPES = {
   "scene-spec": {
     implemented: true,
     stages: ["idea", "research", "script", "scene-spec", "preview", "voice", "render", "qc"],
-    optional: [],
+    optional: ["preview"],
     summary: "Data-driven: Hermes writes a scene spec (seconds, beat, on-screen elements with sourced numbers, motion tokens, captions) that the page renders directly, and the owner sees still frames of the page before the voice and the render. No pictures are generated.",
   },
   "hermes-skill": {
@@ -145,12 +145,16 @@ export function recipeOf(style) {
   return "image-sequence";
 }
 
-/** The stage list a run of this pack goes through: the recipe's, without the voice stage when a skill voices itself. */
+/**
+ * The stage list a run of this pack goes through: the recipe's, without the voice stage when a skill voices itself and
+ * without the stages the pack skips (workflow.skip, only ever a stage the recipe lists as optional).
+ */
 export function workflowStages(style) {
   const recipe = RECIPES[recipeOf(style)];
   if (!recipe) return [];
   const skillVoice = recipeOf(style) === "hermes-skill" && isRecord(style?.hermes) && style.hermes.voice === "skill";
-  return recipe.stages.filter((k) => !(skillVoice && k === "voice"));
+  const skip = isRecord(style?.workflow) && Array.isArray(style.workflow.skip) ? style.workflow.skip : [];
+  return recipe.stages.filter((k) => !(skillVoice && k === "voice") && !skip.includes(k));
 }
 
 export const LIMITS = { packFiles: 200, fileBytes: 1024 * 1024, packBytes: 5 * 1024 * 1024, text: 2000, list: 64 };
@@ -168,7 +172,7 @@ const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "f
 export const OPTIONAL_TOP_KEYS = ["hermes", "workflow", "design", "environment", "formerly", "upgradedTo"];
 const DESIGN_KEYS = ["brief", "palette", "typography", "layout"];
 const HERMES_KEYS = ["skill", "aliases", "mode", "voice", "input", "output", "variantOf"];
-const WORKFLOW_KEYS = ["recipe", "review"];
+const WORKFLOW_KEYS = ["recipe", "review", "skip"];
 
 const isRecord = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const isText = (v, max = LIMITS.text) => typeof v === "string" && v.trim().length > 0 && v.length <= max;
@@ -508,6 +512,19 @@ export function validateWorkflow(style) {
   }
   if (w.recipe !== "hermes-skill" && isRecord(style.hermes) && style.hermes.voice === "skill") {
     issues.push("hermes.voice skill only applies to the hermes-skill recipe");
+  }
+  if (w.skip !== undefined) {
+    if (!Array.isArray(w.skip) || w.skip.length > STAGE_KINDS.length) issues.push(`workflow.skip must be a list of stage kinds (${STAGE_KINDS.join(", ")})`);
+    else {
+      const seen = new Set();
+      for (const k of w.skip) {
+        if (!STAGE_KINDS.includes(k)) issues.push(`workflow.skip: ${JSON.stringify(k)} is not a stage kind (${STAGE_KINDS.join(", ")})`);
+        else if (!recipe.optional.includes(k)) issues.push(`workflow.skip: ${k} is not optional in ${w.recipe} (only ${recipe.optional.length > 0 ? recipe.optional.join(", ") : "no stage is"})`);
+        else if (Array.isArray(w.review) && w.review.includes(k)) issues.push(`workflow.skip: ${k} is also in workflow.review, so it can never be reviewed`);
+        if (seen.has(k)) issues.push(`workflow.skip: ${JSON.stringify(k)} is listed twice`);
+        seen.add(k);
+      }
+    }
   }
   if (w.review !== undefined) {
     if (!Array.isArray(w.review) || w.review.length > STAGE_KINDS.length) issues.push(`workflow.review must be a list of stage kinds (${STAGE_KINDS.join(", ")})`);
