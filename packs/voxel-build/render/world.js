@@ -13,7 +13,7 @@
  */
 
 /** The part kinds this look understands. The portal checks against this list; an unknown kind is refused by name. */
-export const PRIMITIVES = ["box", "walls", "roof", "cylinder", "stair", "path", "tree", "blocks"];
+export const PRIMITIVES = ["box", "walls", "roof", "cylinder", "prism", "stair", "path", "tree", "blocks"];
 
 /**
  * Materials a part may name. Any block the installed map knows also works — this list is the ones that read as
@@ -98,6 +98,7 @@ export function compileParts(parts, opts = {}) {
     const [ax, ay, az] = Array.isArray(part.at) ? part.at : [0, 0, 0];
     const ox = int(ax, 0), oy = int(ay, 0), oz = int(az, 0);
     const [w, h, d] = Array.isArray(part.size) ? part.size.map((n) => clamp(int(n, 1), 1, 48)) : [1, 1, 1];
+    // (size is [w, h, d] for every kind; roof and stair read their own two numbers where a height makes no sense)
     const m = mat(part, at);
     switch (part.kind) {
       case "box": {
@@ -176,6 +177,21 @@ export function compileParts(parts, opts = {}) {
               if (hollow && dd < r - 1) continue;
               put(ox + x, oy + y, oz + z, m);
             }
+        break;
+      }
+      case "prism": {
+        // A wedge: full height at one edge, nothing at the other. Fins, noses, ramps and lean-to roofs are wedges, and a
+        // box cannot fake one without a staircase of its own. `axis` says which way it slopes (x or z), `flip` turns it.
+        const axis = part.axis === "x" ? "x" : "z";
+        const len = axis === "x" ? w : d;
+        const wid = axis === "x" ? d : w;
+        for (let i = 0; i < len; i++) {
+          const from = part.flip === true ? len - 1 - i : i;
+          const colH = Math.max(1, Math.round(h * (len - from) / len));
+          for (let b = 0; b < wid; b++)
+            for (let y = 0; y < colH; y++)
+              put(axis === "x" ? ox + i : ox + b, oy + y, axis === "x" ? oz + b : oz + i, m);
+        }
         break;
       }
       case "stair": {

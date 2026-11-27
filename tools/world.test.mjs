@@ -55,6 +55,18 @@ test("an unknown kind is refused by name, and the list is the primitives", () =>
   assert.ok(!built.notes.some((n) => /material/.test(n)), "a kind note is not a material note");
 });
 
+test("a prism is a slope: full at one edge, one block at the other", () => {
+  const slope = compileParts([{ kind: "prism", at: [0, 0, 0], size: [2, 6, 6], axis: "z" }]);
+  const column = (z) => slope.nodes.filter((n) => n[2] === z && n[0] === 0).length;
+  assert.equal(column(0), 6, "the tall edge is the full height");
+  assert.equal(column(5), 1, "the far edge is one block");
+  const box = compileParts([{ kind: "box", at: [0, 0, 0], size: [2, 6, 6] }]);
+  assert.ok(slope.blocks < box.blocks, "a wedge is less than its box");
+  const turned = compileParts([{ kind: "prism", at: [0, 0, 0], size: [2, 6, 6], axis: "z", flip: true }]);
+  const turnedCol = (z) => turned.nodes.filter((n) => n[2] === z && n[0] === 0).length;
+  assert.equal(turnedCol(5), 6, "flip puts the tall edge at the far side");
+});
+
 test("parts stay inside the block budget and the world limit", () => {
   const huge = compileParts([{ kind: "box", at: [0, 0, 0], size: [48, 48, 48], material: MATERIALS[0] }]);
   assert.ok(huge.blocks <= 24000, `${huge.blocks} blocks`);
@@ -68,6 +80,7 @@ test("every kind makes blocks and reports its bound size", () => {
     { kind: "walls", at: [0, 0, 0], size: [4, 3, 4] },
     { kind: "roof", at: [0, 0, 0], size: [4, 4], rise: 2 },
     { kind: "cylinder", at: [0, 0, 0], radius: 3, height: 4 },
+    { kind: "prism", at: [0, 0, 0], size: [2, 6, 6], axis: "z" },
     { kind: "stair", at: [0, 0, 0], size: [3, 1, 5], rise: 4 },
     { kind: "path", at: [0, 0, 0], size: [3, 1, 3] },
     { kind: "tree", at: [0, 0, 0], rise: 4 },
