@@ -5,6 +5,9 @@
   "description": "A smooth line draws itself on white while one big number counts up with its tip and lands on the final value. Adapted from the graph skill of claude-animation-skills (MIT).",
   "version": "0.1.2",
   "status": "trial",
+  "formerly": [
+    "animated-line-graph"
+  ],
   "family": "motion-graphics",
   "formats": {
     "supported": [

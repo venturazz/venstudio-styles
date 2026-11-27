@@ -2,7 +2,9 @@
  *
  * Locked by this file: real block textures from the kit, the clipping-plane sweep that makes a structure appear block by
  * block from the ground up, the three camera moves, the pixel typeface, the lower-third caption plate and the pay-off word.
- * Left open to the request: how many shots, their lengths, the words on screen, the motion per shot.
+ * Left open to the request: how many shots, their lengths, the words on screen, the motion per shot, and — since the
+ * pack declares a vocabulary (style.json contract.story) — which structure each shot shows, what happens to it
+ * (build, damage, idle) and whether the camera holds the building or the villager beside it.
  *
  * Everything here is a pure function of the frame number. No clock, no animation loop, no random: ask for frame 91 twice
  * and the same pixels come back, which is why this chain is determinism grade A and can be diffed frame by frame.
@@ -13,9 +15,19 @@ import "./assets/mcrig.js";
 import "./assets/mcvoxel.js";
 import { font as pixelFont, textures as embedded } from "./assets/blob.js";
 
-// Fixed rotation, simplest first: a short that starts on a well and ends on a library reads as a village growing. The
-// structures come from the kit; the order is the style's business, not the writer's.
-const ROTATION = ["well", "farm", "medium_house", "blacksmith", "church", "tavern", "large_house", "library"];
+// The kit: the structures this look can build. The writer's story picks one per shot (props.shots[i].intent.structure);
+// this list is the boundary the portal validates against and the fallback when a shot names nothing.
+import { compileParts } from "./world.js";
+
+const KIT = ["well", "farm", "medium_house", "blacksmith", "church", "tavern", "large_house", "library"];
+// Older runs carry no intent at all: they keep the fixed rotation, so a video recorded before the vocabulary existed
+// still renders exactly as it did.
+const ROTATION = KIT;
+
+/** What a shot can do to its structure: raised from the ground, taken apart from the top, or just standing there. */
+const ACTIONS = { build: "build", damage: "damage", idle: "idle" };
+/** What the camera holds: the building, or the villager who lives beside it. */
+const FOCUS = { structure: "structure", villager: "villager" };
 
 // A writer asks for "zoom in"; this is what a zoom is in a voxel village. Unknown motions fall back to the push-in.
 const MOTIONS = {
@@ -37,6 +49,11 @@ let H = 1920;
 let FPS = 30;
 let shots = [];
 let captions = [];
+// What the page had to decide alone this run (unknown material, part outside the limit, fallback to the rotation). The
+// worker's job result carries it, so a run that drifted says so instead of looking fine.
+let worldNotes = [];
+/** The pack's own block names, read from the map the kit draws with (null until the first composed shot asks). */
+let knownBlocks = null;
 let totalFrames = 0;
 let renderer = null;
 let degraded = false;
@@ -79,21 +96,35 @@ function wordFor(shot, text) {
 }
 
 function cameraFor(cam, rig, p) {
-  const { camera, mid, top, radius } = rig;
+  const { camera, center, dist } = rig;
   const e = ease(p);
+  const { x, z } = center;
+  const h = center.y;
+  // A shot that holds the villager looks at the villager: closer, lower, and off the building's axis.
+  if (rig.focus === "villager" && rig.villager) {
+    const v = rig.villager;
+    // A villager is 1.95 blocks tall: far enough to keep the building in shot, close enough that the villager reads.
+    const matter = Math.max(4.5, Math.min(9, dist * 0.18));
+    camera.position.set(v.x + matter * (0.55 + 0.1 * e), v.y + 3.6, v.z + matter * (0.95 - 0.2 * e));
+    camera.lookAt(v.x, v.y + 1.5, v.z);
+    return;
+  }
   if (cam === "orbit") {
     const a = -0.9 + e * 1.1;
-    camera.position.set(mid.x + Math.sin(a) * radius, top * 1.05 + 2.5, mid.z + Math.cos(a) * radius);
+    camera.position.set(x + Math.sin(a) * dist, h + dist * 0.28, z + Math.cos(a) * dist);
   } else if (cam === "crane") {
-    camera.position.set(mid.x + radius * 0.75, top * 0.35 + 2 + e * top * 0.8, mid.z + radius * 0.75);
+    // From below the eaves up to eye level, always far enough that nothing leaves the frame.
+    camera.position.set(x + dist * 0.6, h * 0.45 + dist * (0.08 + 0.22 * e), z + dist * 0.72);
   } else {
-    camera.position.set(mid.x + radius * 0.5, top * 0.75 + 2, mid.z + radius * (1.15 - 0.45 * e));
+    // A real push-in: the building is whole at the cut, and the move ends closer than it started.
+    const d = dist * (1 - 0.34 * e);
+    camera.position.set(x + d * 0.34, h + d * 0.2, z + d * 0.93);
   }
-  camera.lookAt(mid.x, top * 0.42, mid.z);
+  camera.lookAt(x, h, z);
 }
 
 /** Build one shot's world: its structure on real grass, plus a villager for scale. */
-async function buildScene(THREE_, rig, struct, cam) {
+async function buildScene(THREE_, rig, struct, parts, cam, action, focus) {
   const scene = new THREE_.Scene();
   scene.background = new THREE_.Color(0x9fc9e8);
   scene.fog = new THREE_.Fog(0x9fc9e8, 90, 220);
@@ -111,7 +142,26 @@ async function buildScene(THREE_, rig, struct, cam) {
   const ground = await vox.build(groundUrl, { origin: [-GROUND / 2, 0, -GROUND / 2], name: "ground" });
   scene.add(ground);
 
-  const body = await vox.build(`assets/vendor/struct/${struct}.json`, { origin: [0, 0, 0], name: struct });
+  // A named kit structure, or the shot's own parts compiled into the same node format the kit reads. Both go through
+  // the same builder, so the sweep, the materials and the lighting are the look's, not the writer's.
+  let body;
+  if (Array.isArray(parts) && parts.length > 0) {
+    // The installed map decides what a material name means; read it once so a wrong name is a note, not a quiet swap.
+    if (knownBlocks === null) {
+      try {
+        const map = await (await fetch("assets/vendor/blockmap.json")).json();
+        knownBlocks = new Set(Object.keys(map));
+      } catch {
+        knownBlocks = new Set();
+      }
+    }
+    const built = compileParts(parts, { known: knownBlocks });
+    for (const n of built.notes) worldNotes.push(`shot: ${n}`);
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ size: built.size, nodes: built.nodes })], { type: "application/json" }));
+    body = await vox.build(url, { origin: [0, 0, 0], name: "parts" });
+  } else {
+    body = await vox.build(`assets/vendor/struct/${struct}.json`, { origin: [0, 0, 0], name: struct });
+  }
   // The kit caches materials and shares them between meshes; a clipping plane set on the scene object would be ignored by
   // half the blocks. Attach it to every material the build produced, or the sweep stops halfway.
   for (const mesh of [body, ground]) {
@@ -130,18 +180,34 @@ async function buildScene(THREE_, rig, struct, cam) {
   const box = new THREE_.Box3().setFromObject(body);
   const top = Math.max(2, box.max.y);
   const mid = new THREE_.Vector3((box.min.x + box.max.x) / 2, 0, (box.min.z + box.max.z) / 2);
-  const radius = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * 0.9 + 8;
+  // Framing: the whole structure has to fit, tower and all. Distance comes from the bounding sphere and the narrower of
+  // the two fields of view — a portrait frame has a much narrower one horizontally, which is what cropped the tall kit
+  // buildings into unnamed wall fragments.
+  const size = new THREE_.Vector3().subVectors(box.max, box.min);
+  const center = new THREE_.Vector3((box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, (box.min.z + box.max.z) / 2);
+  // Read the camera defensively: a stand-in DOM (the pack's own test) has a camera without fov, and a NaN distance here
+  // would silently blank the frame instead of failing loudly.
+  const fov = Number(camera.fov) > 1 ? Number(camera.fov) : 48;
+  const vFov = (fov * Math.PI) / 180;
+  const aspect = Number(W) > 0 && Number(H) > 0 ? W / H : 9 / 16;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+  const sphere = 0.5 * Math.hypot(size.x, size.y, size.z);
+  const fit = (sphere / Math.sin(Math.min(vFov, hFov) / 2)) * 1.15;
+  const dist = Number.isFinite(fit) && fit > 0 ? fit : Math.max(size.x, size.y, size.z) * 2.2;
 
+  let villagerAt = null;
   try {
     const villager = await rig.load("assets/vendor/villager.json", "assets/vendor/mobs_mc_villager.png", { height: 1.95 });
-    villager.group.position.set(mid.x + 3.4, 0, mid.z + 2.6);
+    // Outside the footprint: a villager set 3.4 blocks from the centre of a 13-block church stands inside its wall.
+    villager.group.position.set(box.max.x + 2.6, 0, box.max.z + 1.8);
     villager.group.rotation.y = -1.1;
     scene.add(villager.group);
+    villagerAt = { x: villager.group.position.x, y: villager.group.position.y, z: villager.group.position.z };
   } catch {
     // A villager that will not load is not a reason to lose the shot; the village just stands empty.
   }
 
-  return { scene, camera, mid, top, radius, cam, struct, sweep: top + 1.5 };
+  return { scene, camera, mid, top, center, dist, radius: dist, cam, struct, sweep: top + 1.5, action, focus, villager: villagerAt };
 }
 
 /** Draw exactly one second of the timeline. The only entry point that touches pixels. */
@@ -172,8 +238,10 @@ function draw(t) {
   const p = shot.seconds > 0 ? clamp01(local / shot.seconds) : 1;
 
   // The build: the structure is whole from the first frame, a plane near the ground hides the rest. Cutting is cheaper
-  // than animating blocks and cannot drift between frames.
-  vox.clip.constant = -0.2 + p * rig.sweep;
+  // than animating blocks and cannot drift between frames. What the plane does is the shot's own intent: a structure
+  // raised from the ground, taken apart from the top, or standing still.
+  const reveal = rig.action === "damage" ? 1 - 0.85 * p : rig.action === "idle" ? 1 : p;
+  vox.clip.constant = -0.2 + reveal * rig.sweep;
   cameraFor(rig.cam, rig, p);
 
   if (active !== index) {
@@ -212,6 +280,7 @@ function draw(t) {
  */
 const page = {
   async init(props) {
+    worldNotes = [];
     W = Number(props?.width) || 1080;
     H = Number(props?.height) || 1920;
     FPS = Number(props?.fps) || 30;
@@ -220,13 +289,24 @@ const page = {
     let at = 0;
     shots = list.map((s, i) => {
       const seconds = Math.max(0.5, Number(s.seconds) || 3);
+      // The story is the request's: the scene spec names a structure, an action and what the camera holds. Anything the
+      // kit does not know falls back to the fixed rotation, so an old run or a stale payload still renders.
+      const intent = s.intent && typeof s.intent === "object" ? s.intent : {};
+      const named = typeof intent.structure === "string" ? intent.structure : "";
+      // Two ways to say what to build, and the story is free to pick either: a named structure from the kit (cheap, and
+      // what a menu would give), or parts composed from the primitives (anything the blocks can make).
+      const parts = Array.isArray(intent.parts) && intent.parts.length > 0 ? intent.parts : null;
       const shot = {
         start: at,
         seconds,
         motion: s.motion ?? "zoom-in",
         caption: s.caption ?? null,
-        struct: ROTATION[i % ROTATION.length],
+        struct: parts ? null : KIT.includes(named) ? named : ROTATION[i % ROTATION.length],
+        parts,
+        action: ACTIONS[intent.action] ?? "build",
+        focus: FOCUS[intent.focus] ?? "structure",
       };
+      if (parts && !KIT.includes(named)) worldNotes.push(`shot ${i + 1}: built from parts, not from the kit`);
       at += seconds;
       return shot;
     });
@@ -249,7 +329,8 @@ const page = {
       // Still answer the job's shape — and only that: the worker checks these four numbers and nothing else. Nothing is
       // drawn and nothing is claimed about the picture.
       draw(0);
-      return { totalFrames, fps: FPS, width: W, height: H };
+      // The flag the worker reads (0.19.1): a still or a video of text on a blank plate is not the look.
+      return { totalFrames, fps: FPS, width: W, height: H, degraded: true, ...(worldNotes.length > 0 ? { world: worldNotes.slice(0, 24) } : {}) };
     }
     renderer.setPixelRatio(1);
     renderer.setSize(W / 2, H / 2, false);
@@ -268,7 +349,7 @@ const page = {
     const made = [];
     for (const shot of shots) {
       const cam = MOTIONS[shot.motion] ?? "push-in";
-      made.push(await buildScene(THREE, rig, shot.struct, cam));
+      made.push(await buildScene(THREE, rig, shot.struct, shot.parts, cam, shot.action, shot.focus));
     }
     scenes = made;
     active = -1;
@@ -283,7 +364,9 @@ const page = {
     if (document.fonts?.ready) await document.fonts.ready;
 
     draw(0);
-    return { totalFrames, fps: FPS, width: W, height: H };
+    // `world` is what the page decided alone (see worldNotes): the worker stores it with the job, so a run that fell
+    // back or swapped a material can be seen without opening the video.
+    return { totalFrames, fps: FPS, width: W, height: H, ...(worldNotes.length > 0 ? { world: worldNotes.slice(0, 24) } : {}) };
   },
 
   renderFrame(f) {

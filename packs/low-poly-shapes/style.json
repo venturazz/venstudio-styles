@@ -5,6 +5,9 @@
   "description": "A flat-shaded low-poly shape turns over a dimmed plate, one per scene: it pops in, drifts or the camera pushes closer. three.js projects it on the CPU and resvg rasterises each frame.",
   "version": "0.1.0",
   "status": "draft",
+  "formerly": [
+    "three-low-poly"
+  ],
   "family": "animation-3d",
   "formats": {
     "supported": [

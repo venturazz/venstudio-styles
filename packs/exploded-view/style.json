@@ -5,6 +5,9 @@
   "description": "A 3D phone floats on a dark studio backdrop and comes apart layer by layer, each part with a leader line and a label. Hermes renders it with /breakdown.",
   "version": "0.2.0",
   "status": "trial",
+  "formerly": [
+    "hermes-breakdown"
+  ],
   "family": "animation-3d",
   "formats": {
     "supported": [
