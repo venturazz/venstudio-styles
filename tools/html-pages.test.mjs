@@ -137,7 +137,14 @@ async function render(pack, mutate) {
   const { ctx, root: stage, inner } = loadPage(pack.dir);
   const got = await ctx.VENSTUDIO.init(JSON.parse(JSON.stringify(props)));
   const root = inner.children.length > 0 ? inner : stage;
-  assert.deepEqual({ ...got }, { totalFrames: props.totalFrames, fps: props.fps, width: props.width, height: props.height }, `${pack.id}: init answers the job's size, fps and frame count`);
+  // This harness has no WebGL, so a page that needs it must say so instead of pretending it drew something. The four
+  // numbers are still the job's; `degraded` is allowed and, when set, is checked below: text only, no blocks.
+  const { degraded, ...meta } = got;
+  assert.deepEqual(meta, { totalFrames: props.totalFrames, fps: props.fps, width: props.width, height: props.height }, `${pack.id}: init answers the job's size, fps and frame count`);
+  if (degraded === true) {
+    const drawn = [...root.walk()].flatMap((n) => [...Object.values(n.style)]).filter((v) => typeof v === "string" && /rgb|url/.test(v));
+    assert.equal(drawn.length, 0, `${pack.id}: a degraded page draws no blocks`);
+  }
   const seen = new Map();
   for (let f = 0; f < props.totalFrames; f++) {
     ctx.VENSTUDIO.renderFrame(f);

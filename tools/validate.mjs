@@ -90,7 +90,7 @@ export const RECIPES = {
   "scene-spec": {
     implemented: true,
     stages: ["idea", "research", "script", "scene-spec", "preview", "voice", "render", "qc"],
-    optional: [],
+    optional: ["preview"],
     summary: "Data-driven: Hermes writes a scene spec (seconds, beat, on-screen elements with sourced numbers, motion tokens, captions) that the page renders directly, and the owner sees still frames of the page before the voice and the render. No pictures are generated.",
   },
   "hermes-skill": {
@@ -145,12 +145,16 @@ export function recipeOf(style) {
   return "image-sequence";
 }
 
-/** The stage list a run of this pack goes through: the recipe's, without the voice stage when a skill voices itself. */
+/**
+ * The stage list a run of this pack goes through: the recipe's, without the voice stage when a skill voices itself and
+ * without the stages the pack skips (workflow.skip, only ever a stage the recipe lists as optional).
+ */
 export function workflowStages(style) {
   const recipe = RECIPES[recipeOf(style)];
   if (!recipe) return [];
   const skillVoice = recipeOf(style) === "hermes-skill" && isRecord(style?.hermes) && style.hermes.voice === "skill";
-  return recipe.stages.filter((k) => !(skillVoice && k === "voice"));
+  const skip = isRecord(style?.workflow) && Array.isArray(style.workflow.skip) ? style.workflow.skip : [];
+  return recipe.stages.filter((k) => !(skillVoice && k === "voice") && !skip.includes(k));
 }
 
 export const LIMITS = { packFiles: 200, fileBytes: 1024 * 1024, packBytes: 5 * 1024 * 1024, text: 2000, list: 64 };
@@ -163,12 +167,12 @@ const PATH_RE = /^[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$/;
 /** A Hermes skill as it is invoked, e.g. "/graph". */
 const SKILL_RE = /^\/[a-z0-9][a-z0-9-]{0,62}$/;
 
-const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "family", "formats", "renderer", "contract", "portal", "fixture", "provenance", "curation", "hermes", "workflow", "design", "environment"];
+const TOP_KEYS = ["format", "id", "name", "description", "version", "status", "family", "formats", "renderer", "contract", "portal", "fixture", "provenance", "curation", "hermes", "workflow", "design", "environment", "formerly", "upgradedTo"];
 /** Top-level fields a pack may leave out. */
-export const OPTIONAL_TOP_KEYS = ["hermes", "workflow", "design", "environment"];
+export const OPTIONAL_TOP_KEYS = ["hermes", "workflow", "design", "environment", "formerly", "upgradedTo"];
 const DESIGN_KEYS = ["brief", "palette", "typography", "layout"];
 const HERMES_KEYS = ["skill", "aliases", "mode", "voice", "input", "output", "variantOf"];
-const WORKFLOW_KEYS = ["recipe", "review"];
+const WORKFLOW_KEYS = ["recipe", "review", "skip"];
 
 const isRecord = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const isText = (v, max = LIMITS.text) => typeof v === "string" && v.trim().length > 0 && v.length <= max;
@@ -229,6 +233,90 @@ function checkKeys(obj, allowed, at, issues) {
   for (const k of Object.keys(obj)) if (!allowed.includes(k)) issues.push(`${at}: unknown field "${k}"`);
 }
 
+/**
+ * contract.story: the words this look understands, one list per slot (structure, action, focus, or anything a pack
+ * invents). The scene spec must fill every slot with one of these values, so the list is a promise the pack can keep.
+ */
+const STORY_SLOT = /^[a-z][a-z0-9-]{0,23}$/;
+const STORY_VALUE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+
+function checkStory(v, issues) {
+  if (!isRecord(v)) {
+    issues.push("contract.story must be an object of slot -> list of values");
+    return;
+  }
+  const slots = Object.keys(v);
+  if (slots.length === 0 || slots.length > 12) issues.push(`contract.story must declare 1..12 slots, not ${slots.length}`);
+  for (const slot of slots) {
+    if (!STORY_SLOT.test(slot)) {
+      issues.push(`contract.story: "${slot}" is not a slot name (lowercase letters, digits and dashes, starting with a letter)`);
+      continue;
+    }
+    const values = v[slot];
+    if (!Array.isArray(values) || values.length === 0 || values.length > 24) {
+      issues.push(`contract.story.${slot} must be a list of 1..24 values`);
+      continue;
+    }
+    const seen = new Set();
+    for (const x of values) {
+      if (typeof x !== "string" || !STORY_VALUE.test(x)) issues.push(`contract.story.${slot}: ${JSON.stringify(x)} is not a value (lowercase letters, digits, dash or underscore)`);
+      else if (seen.has(x)) issues.push(`contract.story.${slot}: "${x}" is listed twice`);
+      seen.add(x);
+    }
+  }
+}
+
+/**
+ * contract.world: the primitives the pack's page can compose, by name, mirroring render/world.js. Declared so the portal
+ * only offers parts a page actually implements — a page that cannot compose says so instead of drawing its fallback and
+ * letting the story think it was heard.
+ */
+export const WORLD_PRIMITIVES = ["box", "walls", "roof", "cylinder", "prism", "stair", "path", "tree", "blocks"];
+
+function checkWorld(v, issues) {
+  if (!Array.isArray(v) || v.length === 0 || v.length > WORLD_PRIMITIVES.length) {
+    issues.push(`contract.world must be a list of 1..${WORLD_PRIMITIVES.length} primitives`);
+    return;
+  }
+  const seen = new Set();
+  for (const x of v) {
+    if (!WORLD_PRIMITIVES.includes(x)) issues.push(`contract.world: ${JSON.stringify(x)} is not a primitive (${WORLD_PRIMITIVES.join(", ")})`);
+    else if (seen.has(x)) issues.push(`contract.world: "${x}" is listed twice`);
+    seen.add(x);
+  }
+}
+
+/**
+ * contract.library: structures this pack has composed before, by name, each a list of parts (the same shape a scene
+ * sends in intent.parts). Data, not code — a name is sugar the portal expands back into parts before the payload is
+ * frozen, so a render never depends on the worker knowing the name.
+ */
+function checkLibrary(v, issues) {
+  if (!isRecord(v)) {
+    issues.push("contract.library must be an object of name -> parts");
+    return;
+  }
+  const names = Object.keys(v);
+  if (names.length === 0 || names.length > 12) issues.push(`contract.library must declare 1..12 names, not ${names.length}`);
+  for (const name of names) {
+    if (!STORY_VALUE.test(name)) {
+      issues.push(`contract.library: ${JSON.stringify(name)} is not a name (lowercase letters, digits, dash or underscore)`);
+      continue;
+    }
+    const parts = v[name];
+    if (!Array.isArray(parts) || parts.length === 0 || parts.length > 64) {
+      issues.push(`contract.library.${name} must be a list of 1..64 parts`);
+      continue;
+    }
+    parts.forEach((part, i) => {
+      if (!isRecord(part)) issues.push(`contract.library.${name}[${i}] must be an object`);
+      else if (!WORLD_PRIMITIVES.includes(part.kind)) {
+        issues.push(`contract.library.${name}[${i}].kind is ${JSON.stringify(part.kind)}, not one of ${WORLD_PRIMITIVES.join(", ")}`);
+      }
+    });
+  }
+}
+
 function checkList(v, allowed, at, issues, { min = 1 } = {}) {
   if (!Array.isArray(v) || v.length < min || v.length > LIMITS.list) {
     issues.push(`${at} must be a list of ${min}..${LIMITS.list} entries`);
@@ -264,6 +352,22 @@ export function validateStyle(style, { dirName, files } = {}) {
   if (typeof style.version !== "string" || !SEMVER_RE.test(style.version)) issues.push("version must be semver MAJOR.MINOR.PATCH");
   if (!STATUSES.includes(style.status)) issues.push(`status must be one of ${STATUSES.join(", ")}`);
   if (!FAMILIES.includes(style.family)) issues.push(`family must be one of ${FAMILIES.join(", ")}`);
+
+  // Aliases: `formerly` keeps an old id resolvable after a rename; never a second pack (validateRepo checks collisions).
+  if (style.formerly !== undefined) {
+    if (!Array.isArray(style.formerly) || style.formerly.length === 0 || style.formerly.length > 8)
+      issues.push("formerly must be a list of 1..8 old ids");
+    else
+      for (const f of style.formerly) {
+        if (typeof f !== "string" || !ID_RE.test(f)) issues.push("formerly entries must be lowercase letters, digits and dashes (2..63 characters)");
+        else if (f === style.id) issues.push("formerly must not name the pack itself");
+      }
+  }
+  if (style.upgradedTo !== undefined) {
+    if (typeof style.upgradedTo !== "string" || !ID_RE.test(style.upgradedTo)) issues.push("upgradedTo must be a pack id");
+    else if (style.upgradedTo === style.id) issues.push("upgradedTo must not name the pack itself");
+    else if (style.status !== "retired") issues.push("upgradedTo is only for a retired pack: the live pack that replaced it");
+  }
 
   if (!isRecord(style.formats)) issues.push("formats must be an object");
   else {
@@ -301,7 +405,14 @@ export function validateStyle(style, { dirName, files } = {}) {
   const c = style.contract;
   if (!isRecord(c)) issues.push("contract must be an object");
   else {
-    checkKeys(c, ["pacing", "onScreen", "captions", "audio", "assets"], "contract", issues);
+    checkKeys(c, ["pacing", "onScreen", "captions", "audio", "assets", "story", "world", "library"], "contract", issues);
+    if (c.story !== undefined) checkStory(c.story, issues);
+    if (c.world !== undefined) checkWorld(c.world, issues);
+    if (c.library !== undefined) checkLibrary(c.library, issues);
+    // Composing needs words to build: a page that takes parts but no story has nothing to build from.
+    if (c.world !== undefined && c.story === undefined) issues.push("contract.world needs contract.story: parts build what the scenes say");
+    // A named structure is a shortcut to parts, so the look must also be able to compose them.
+    if (c.library !== undefined && c.world === undefined) issues.push("contract.library needs contract.world: a name expands to parts");
     const p = c.pacing;
     if (!isRecord(p)) issues.push("contract.pacing must be an object");
     else {
@@ -492,6 +603,19 @@ export function validateWorkflow(style) {
   }
   if (w.recipe !== "hermes-skill" && isRecord(style.hermes) && style.hermes.voice === "skill") {
     issues.push("hermes.voice skill only applies to the hermes-skill recipe");
+  }
+  if (w.skip !== undefined) {
+    if (!Array.isArray(w.skip) || w.skip.length > STAGE_KINDS.length) issues.push(`workflow.skip must be a list of stage kinds (${STAGE_KINDS.join(", ")})`);
+    else {
+      const seen = new Set();
+      for (const k of w.skip) {
+        if (!STAGE_KINDS.includes(k)) issues.push(`workflow.skip: ${JSON.stringify(k)} is not a stage kind (${STAGE_KINDS.join(", ")})`);
+        else if (!recipe.optional.includes(k)) issues.push(`workflow.skip: ${k} is not optional in ${w.recipe} (only ${recipe.optional.length > 0 ? recipe.optional.join(", ") : "no stage is"})`);
+        else if (Array.isArray(w.review) && w.review.includes(k)) issues.push(`workflow.skip: ${k} is also in workflow.review, so it can never be reviewed`);
+        if (seen.has(k)) issues.push(`workflow.skip: ${JSON.stringify(k)} is listed twice`);
+        seen.add(k);
+      }
+    }
   }
   if (w.review !== undefined) {
     if (!Array.isArray(w.review) || w.review.length > STAGE_KINDS.length) issues.push(`workflow.review must be a list of stage kinds (${STAGE_KINDS.join(", ")})`);
@@ -1049,6 +1173,7 @@ export function validateRepo(root) {
       if (v === d) issues.push(`packs/${d}: hermes.variantOf names the pack itself`);
     }
   });
+  issues.push(...aliasIssues(packsDir, dirs, packs));
   for (const p of packs) issues.push(...p.issues);
   return { packs, issues };
 }
@@ -1069,6 +1194,38 @@ function readComposition(dir) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Alias checks only a whole repo can make: an old id in `formerly` may not collide with a live pack id or with
+ * another pack's `formerly`, and `upgradedTo` must name a pack that is still live.
+ */
+function aliasIssues(packsDir, dirs, packs) {
+  const issues = [];
+  const styleOf = new Map();
+  for (const d of dirs) {
+    try {
+      styleOf.set(d, JSON.parse(readFileSync(path.join(packsDir, d, "style.json"), "utf8")));
+    } catch {
+      // validatePackDir already reported the unreadable manifest
+    }
+  }
+  const claimed = new Map();
+  for (const [d, s] of styleOf) {
+    const former = Array.isArray(s.formerly) ? s.formerly : [];
+    for (const f of former) {
+      if (typeof f !== "string" || !ID_RE.test(f)) continue;
+      if (styleOf.has(f)) issues.push(`packs/${d}: formerly "${f}" is already the id of a pack here`);
+      if (claimed.has(f)) issues.push(`formerly "${f}" is claimed by packs/${claimed.get(f)} and packs/${d}`);
+      claimed.set(f, d);
+    }
+    if (typeof s.upgradedTo === "string" && ID_RE.test(s.upgradedTo)) {
+      const target = styleOf.get(s.upgradedTo);
+      if (!target) issues.push(`packs/${d}: upgradedTo names "${s.upgradedTo}", which is not a pack here`);
+      else if (target.status === "retired") issues.push(`packs/${d}: upgradedTo names "${s.upgradedTo}", which is retired too`);
+    }
+  }
+  return issues;
 }
 
 /** Two packs with one id, or two Remotion packs with one composition id, would shadow each other on a worker. */

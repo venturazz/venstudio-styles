@@ -5,6 +5,9 @@
   "description": "A fictional story told over dark stills with sound design.",
   "version": "1.0.1",
   "status": "trial",
+  "formerly": [
+    "horror-story"
+  ],
   "family": "narrative",
   "formats": {
     "supported": [

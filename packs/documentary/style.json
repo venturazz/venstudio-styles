@@ -5,6 +5,9 @@
   "description": "Narration over stills with slow camera moves and a clear timeline.",
   "version": "1.0.1",
   "status": "trial",
+  "formerly": [
+    "documentary-stills"
+  ],
   "family": "documentary",
   "formats": {
     "supported": [

@@ -97,7 +97,8 @@ const page = {
       degraded = true;
       studio = null;
       console.log(`no WebGL here: ${err instanceof Error ? err.message : String(err)}`);
-      return { totalFrames, fps, width: W, height: H };
+      // The flag the worker reads (0.19.1): a still or a video of text on a blank plate is not the look.
+      return { totalFrames, fps, width: W, height: H, degraded: true };
     }
     studio.shotsHook = (K) => buildShots(K, plan);
     await studio.load();

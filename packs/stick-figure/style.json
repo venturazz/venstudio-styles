@@ -5,6 +5,9 @@
   "description": "A bright cartoon world with stick people, constant camera motion, whip transitions and 1 to 2 word captions timed to the voice. A full reel Hermes makes with /stick-figure.",
   "version": "0.2.0",
   "status": "trial",
+  "formerly": [
+    "hermes-stick-figure"
+  ],
   "family": "animation-2d",
   "formats": {
     "supported": [

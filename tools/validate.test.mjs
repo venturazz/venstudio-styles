@@ -107,16 +107,19 @@ const RESEARCH = { date: "2026-11-22", kind: "research-source", ref: "https://gi
 test("research-source: accepted for a hermes pack at lab or trial, required there, never for other engines, never above trial", () => {
   const g = load("line-graph-skill");
   assert.deepEqual(V.validateStyle(g, { dirName: "line-graph-skill" }), []);
+  // Retired is what lets it name its replacement: changing its status drops upgradedTo, the alias stays.
+  const base = clone(g);
+  delete base.upgradedTo;
   for (const status of ["lab", "trial"]) {
-    assert.deepEqual(V.validateStyle({ ...clone(g), status, curation: [RESEARCH] }), [], status);
-    assert.ok(has(V.validateStyle({ ...clone(g), status, curation: [] }), /hermes pack needs a research-source entry with result "pass"/), `${status} without evidence`);
-    assert.ok(has(V.validateStyle({ ...clone(g), status, curation: [{ ...RESEARCH, result: "note" }] }), /needs a research-source entry/), `${status} with a note only`);
+    assert.deepEqual(V.validateStyle({ ...clone(base), status, curation: [RESEARCH] }), [], status);
+    assert.ok(has(V.validateStyle({ ...clone(base), status, curation: [] }), /hermes pack needs a research-source entry with result "pass"/), `${status} without evidence`);
+    assert.ok(has(V.validateStyle({ ...clone(base), status, curation: [{ ...RESEARCH, result: "note" }] }), /needs a research-source entry/), `${status} with a note only`);
   }
-  assert.deepEqual(V.validateStyle({ ...clone(g), status: "draft", curation: [] }), [], "a hermes draft needs no evidence");
+  assert.deepEqual(V.validateStyle({ ...clone(base), status: "draft", curation: [] }), [], "a hermes draft needs no evidence");
   // Never above trial, research-source or not.
   for (const status of ["proven", "listed"]) {
     const curation = [RESEARCH, { date: "2026-11-22", kind: "owner-review", ref: "PR", result: "approved", notes: "" }, { date: "2026-11-22", kind: "trial-run", ref: "run", result: "pass", notes: "" }];
-    assert.ok(has(V.validateStyle({ ...clone(g), status, curation }), /can be at most trial, never/), status);
+    assert.ok(has(V.validateStyle({ ...clone(base), status, curation }), /can be at most trial, never/), status);
   }
   // Another engine: research-source is refused, and it never stands in for the CI render.
   const html = load("line-graph");
@@ -159,8 +162,10 @@ test("one research pack per claude-animation-skills skill, pinned, credited and 
     "stick-figure": "stick-figure",
     "zach-d-films": "what-if-3d",
   };
-  // Two of them are superseded by a worker pack that renders the same look, so they sit at retired; the rest are live trials.
-  const RETIRED = ["graph", "minimalistic-graphics", "minecraft"];
+  // Two of them are superseded by a worker pack that renders the same look, so they sit at retired. /minecraft stays a
+  // live trial: the Muse pack draws a village of kit structures, not the cottage this skill builds, so it is a different
+  // look rather than a replacement (the owner picks one or the other).
+  const RETIRED = ["graph", "minimalistic-graphics"];
   for (const [skill, id] of Object.entries(PACKS)) {
     const s = load(id);
     const status = RETIRED.includes(skill) ? "retired" : "trial";
@@ -464,4 +469,50 @@ test("html-design: research only, html-capture only, at most trial, the owner re
   assert.ok(has(V.validateRepo(gsap).issues, /GSAP is not available to html-design pages until the owner approves its licence/));
   // research-source still never stands in for other packs' CI render.
   assert.ok(has(V.validateStyle({ ...clone(load("probe-line-graph")), curation: [{ date: "2026-11-22", kind: "research-source", ref: "x", result: "pass", notes: "" }] }), /research-source is evidence for hermes packs \(and html-design packs\) only/));
+});
+
+test("workflow.skip drops only a stage the recipe calls optional", () => {
+  const voxel = load("voxel-build");
+  // The 3D page costs seconds per frame to photograph, so this pack runs without the still-frame preview.
+  assert.deepEqual(V.workflowStages(voxel), ["idea", "research", "script", "scene-spec", "voice", "render", "qc"]);
+  assert.deepEqual(V.validateStyle(voxel), []);
+  // A pack that skips a stage its recipe needs is refused by name.
+  assert.ok(
+    has(V.validateStyle({ ...clone(voxel), workflow: { recipe: "scene-spec", skip: ["qc"] } }), /workflow\.skip: qc is not optional in scene-spec/),
+  );
+  // Skipping and reviewing the same stage is a contradiction.
+  assert.ok(
+    has(
+      V.validateStyle({ ...clone(voxel), workflow: { recipe: "scene-spec", review: ["preview"], skip: ["preview"] } }),
+      /workflow\.skip: preview is also in workflow\.review/,
+    ),
+  );
+  // The preview stays for every pack that does not ask to drop it.
+  assert.ok(V.workflowStages(load("line-graph")).includes("preview"));
+  assert.deepEqual(V.workflowStages({ ...clone(voxel), workflow: undefined, renderer: voxel.renderer }), [
+    "idea",
+    "research",
+    "script",
+    "scene-spec",
+    "preview",
+    "voice",
+    "render",
+    "qc",
+  ]);
+});
+test("contract.story: the words a look understands, and only well-formed ones", () => {
+  const voxel = load("voxel-build");
+  // The shipped village: eight structures, three things a shot can do to one, two things the camera can hold.
+  assert.deepEqual(Object.keys(voxel.contract.story), ["structure", "action", "focus"]);
+  assert.deepEqual(voxel.contract.story.action, ["build", "damage", "idle"]);
+  assert.deepEqual(V.validateStyle(voxel), []);
+  const story = (v) => V.validateStyle({ ...clone(voxel), contract: { ...voxel.contract, story: v } });
+  assert.ok(has(story({ structure: [] }), /contract\.story\.structure must be a list of 1\.\.24 values/));
+  assert.ok(has(story({ structure: ["Church"] }), /contract\.story\.structure: "Church" is not a value/));
+  assert.ok(has(story({ structure: ["church", "church"] }), /contract\.story\.structure: "church" is listed twice/));
+  assert.ok(has(story({ Structure: ["church"] }), /contract\.story: "Structure" is not a slot name/));
+  assert.ok(has(story({}), /contract\.story must declare 1\.\.12 slots, not 0/));
+  assert.ok(has(story("church"), /contract\.story must be an object of slot -> list of values/));
+  // A slot a pack invents is fine: that is the point of a vocabulary rather than a fixed schema.
+  assert.deepEqual(story({ chart: ["line", "bar"], palette: ["warm", "cold"] }), []);
 });

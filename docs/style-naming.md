@@ -110,3 +110,29 @@ Then the venstudio side, which this repo cannot do alone:
 - **Old runs break on a rename.** The portal pins `pack:<id>@<version>`; after a sync, runs that used the old id have no
   pack to replay with. Keep the previous vendored bundle, or teach venstudio an alias map, before `scripts/sync-styles.mjs`
   is run against these names.
+
+## Old ids still resolve
+
+A rename does not break history: the old id lives in `formerly` on the pack that replaced it, so a run, a review link
+or a saved brief that says the old id still resolves — one entry in the picker, not two. A retired pack that has a
+successor names it in `upgradedTo`, and Studio reads that as "replaced by X, start a new run"; revising an old run
+stays on the pack it started with.
+
+| Old id | Resolves to | Replaced by | Status |
+| --- | --- | --- | --- |
+| `hermes-dan-koe` | `branching-lines` | — | trial |
+| `hermes-designed-explainer` | `designed-explainer` | — | trial |
+| `documentary-stills` | `documentary` | — | trial |
+| `hermes-breakdown` | `exploded-view` | — | trial |
+| `hermes-kurzgesagt` | `flat-space` | — | trial |
+| `horror-story` | `horror-narration` | — | trial |
+| `hermes-graph` | `line-graph-skill` | `line-graph` | retired |
+| `animated-line-graph` | `line-graph` | — | trial |
+| `three-low-poly` | `low-poly-shapes` | — | draft |
+| `hermes-map-route` | `map-route` | — | trial |
+| `hermes-low-poly` | `ps1-low-poly` | — | trial |
+| `hermes-research-explainer` | `research-render` | — | retired |
+| `hermes-minimalistic-graphics` | `step-line-art-skill` | `minimal-line-art` | retired |
+| `hermes-stick-figure` | `stick-figure` | — | trial |
+| `hermes-minecraft` | `voxel-build-skill` | `voxel-build` | retired |
+| `hermes-zach-d-films` | `what-if-3d` | — | trial |
