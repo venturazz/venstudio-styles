@@ -17,6 +17,8 @@ import { font as pixelFont, textures as embedded } from "./assets/blob.js";
 
 // The kit: the structures this look can build. The writer's story picks one per shot (props.shots[i].intent.structure);
 // this list is the boundary the portal validates against and the fallback when a shot names nothing.
+import { compileParts } from "./world.js";
+
 const KIT = ["well", "farm", "medium_house", "blacksmith", "church", "tavern", "large_house", "library"];
 // Older runs carry no intent at all: they keep the fixed rotation, so a video recorded before the vocabulary existed
 // still renders exactly as it did.
@@ -47,6 +49,9 @@ let H = 1920;
 let FPS = 30;
 let shots = [];
 let captions = [];
+// What the page had to decide alone this run (unknown material, part outside the limit, fallback to the rotation). The
+// worker's job result carries it, so a run that drifted says so instead of looking fine.
+let worldNotes = [];
 let totalFrames = 0;
 let renderer = null;
 let degraded = false;
@@ -117,7 +122,7 @@ function cameraFor(cam, rig, p) {
 }
 
 /** Build one shot's world: its structure on real grass, plus a villager for scale. */
-async function buildScene(THREE_, rig, struct, cam, action, focus) {
+async function buildScene(THREE_, rig, struct, parts, cam, action, focus) {
   const scene = new THREE_.Scene();
   scene.background = new THREE_.Color(0x9fc9e8);
   scene.fog = new THREE_.Fog(0x9fc9e8, 90, 220);
@@ -135,7 +140,17 @@ async function buildScene(THREE_, rig, struct, cam, action, focus) {
   const ground = await vox.build(groundUrl, { origin: [-GROUND / 2, 0, -GROUND / 2], name: "ground" });
   scene.add(ground);
 
-  const body = await vox.build(`assets/vendor/struct/${struct}.json`, { origin: [0, 0, 0], name: struct });
+  // A named kit structure, or the shot's own parts compiled into the same node format the kit reads. Both go through
+  // the same builder, so the sweep, the materials and the lighting are the look's, not the writer's.
+  let body;
+  if (Array.isArray(parts) && parts.length > 0) {
+    const built = compileParts(parts);
+    for (const n of built.notes) worldNotes.push(`shot: ${n}`);
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ size: built.size, nodes: built.nodes })], { type: "application/json" }));
+    body = await vox.build(url, { origin: [0, 0, 0], name: "parts" });
+  } else {
+    body = await vox.build(`assets/vendor/struct/${struct}.json`, { origin: [0, 0, 0], name: struct });
+  }
   // The kit caches materials and shares them between meshes; a clipping plane set on the scene object would be ignored by
   // half the blocks. Attach it to every material the build produced, or the sweep stops halfway.
   for (const mesh of [body, ground]) {
@@ -254,6 +269,7 @@ function draw(t) {
  */
 const page = {
   async init(props) {
+    worldNotes = [];
     W = Number(props?.width) || 1080;
     H = Number(props?.height) || 1920;
     FPS = Number(props?.fps) || 30;
@@ -266,15 +282,20 @@ const page = {
       // kit does not know falls back to the fixed rotation, so an old run or a stale payload still renders.
       const intent = s.intent && typeof s.intent === "object" ? s.intent : {};
       const named = typeof intent.structure === "string" ? intent.structure : "";
+      // Two ways to say what to build, and the story is free to pick either: a named structure from the kit (cheap, and
+      // what a menu would give), or parts composed from the primitives (anything the blocks can make).
+      const parts = Array.isArray(intent.parts) && intent.parts.length > 0 ? intent.parts : null;
       const shot = {
         start: at,
         seconds,
         motion: s.motion ?? "zoom-in",
         caption: s.caption ?? null,
-        struct: KIT.includes(named) ? named : ROTATION[i % ROTATION.length],
+        struct: parts ? null : KIT.includes(named) ? named : ROTATION[i % ROTATION.length],
+        parts,
         action: ACTIONS[intent.action] ?? "build",
         focus: FOCUS[intent.focus] ?? "structure",
       };
+      if (parts && !KIT.includes(named)) worldNotes.push(`shot ${i + 1}: built from parts, not from the kit`);
       at += seconds;
       return shot;
     });
@@ -298,7 +319,7 @@ const page = {
       // drawn and nothing is claimed about the picture.
       draw(0);
       // The flag the worker reads (0.19.1): a still or a video of text on a blank plate is not the look.
-      return { totalFrames, fps: FPS, width: W, height: H, degraded: true };
+      return { totalFrames, fps: FPS, width: W, height: H, degraded: true, ...(worldNotes.length > 0 ? { world: worldNotes.slice(0, 24) } : {}) };
     }
     renderer.setPixelRatio(1);
     renderer.setSize(W / 2, H / 2, false);
@@ -317,7 +338,7 @@ const page = {
     const made = [];
     for (const shot of shots) {
       const cam = MOTIONS[shot.motion] ?? "push-in";
-      made.push(await buildScene(THREE, rig, shot.struct, cam, shot.action, shot.focus));
+      made.push(await buildScene(THREE, rig, shot.struct, shot.parts, cam, shot.action, shot.focus));
     }
     scenes = made;
     active = -1;
@@ -332,7 +353,9 @@ const page = {
     if (document.fonts?.ready) await document.fonts.ready;
 
     draw(0);
-    return { totalFrames, fps: FPS, width: W, height: H };
+    // `world` is what the page decided alone (see worldNotes): the worker stores it with the job, so a run that fell
+    // back or swapped a material can be seen without opening the video.
+    return { totalFrames, fps: FPS, width: W, height: H, ...(worldNotes.length > 0 ? { world: worldNotes.slice(0, 24) } : {}) };
   },
 
   renderFrame(f) {
