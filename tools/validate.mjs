@@ -266,6 +266,26 @@ function checkStory(v, issues) {
   }
 }
 
+/**
+ * contract.world: the primitives the pack's page can compose, by name, mirroring render/world.js. Declared so the portal
+ * only offers parts a page actually implements — a page that cannot compose says so instead of drawing its fallback and
+ * letting the story think it was heard.
+ */
+export const WORLD_PRIMITIVES = ["box", "walls", "roof", "cylinder", "prism", "stair", "path", "tree", "blocks"];
+
+function checkWorld(v, issues) {
+  if (!Array.isArray(v) || v.length === 0 || v.length > WORLD_PRIMITIVES.length) {
+    issues.push(`contract.world must be a list of 1..${WORLD_PRIMITIVES.length} primitives`);
+    return;
+  }
+  const seen = new Set();
+  for (const x of v) {
+    if (!WORLD_PRIMITIVES.includes(x)) issues.push(`contract.world: ${JSON.stringify(x)} is not a primitive (${WORLD_PRIMITIVES.join(", ")})`);
+    else if (seen.has(x)) issues.push(`contract.world: "${x}" is listed twice`);
+    seen.add(x);
+  }
+}
+
 function checkList(v, allowed, at, issues, { min = 1 } = {}) {
   if (!Array.isArray(v) || v.length < min || v.length > LIMITS.list) {
     issues.push(`${at} must be a list of ${min}..${LIMITS.list} entries`);
@@ -354,8 +374,11 @@ export function validateStyle(style, { dirName, files } = {}) {
   const c = style.contract;
   if (!isRecord(c)) issues.push("contract must be an object");
   else {
-    checkKeys(c, ["pacing", "onScreen", "captions", "audio", "assets", "story"], "contract", issues);
+    checkKeys(c, ["pacing", "onScreen", "captions", "audio", "assets", "story", "world"], "contract", issues);
     if (c.story !== undefined) checkStory(c.story, issues);
+    if (c.world !== undefined) checkWorld(c.world, issues);
+    // Composing needs words to build: a page that takes parts but no story has nothing to build from.
+    if (c.world !== undefined && c.story === undefined) issues.push("contract.world needs contract.story: parts build what the scenes say");
     const p = c.pacing;
     if (!isRecord(p)) issues.push("contract.pacing must be an object");
     else {

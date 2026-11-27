@@ -91,7 +91,18 @@
         "structure",
         "villager"
       ]
-    }
+    },
+    "world": [
+      "box",
+      "walls",
+      "roof",
+      "cylinder",
+      "prism",
+      "stair",
+      "path",
+      "tree",
+      "blocks"
+    ]
   },
   "portal": {
     "beatShape": "single",
