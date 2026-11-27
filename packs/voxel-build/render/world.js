@@ -19,27 +19,31 @@ export const PRIMITIVES = ["box", "walls", "roof", "cylinder", "stair", "path", 
  * Materials a part may name. Any block the installed map knows also works — this list is the ones that read as
  * architecture at a glance, and the page reports (rather than silently swaps) anything outside both.
  */
+/**
+ * Full blocks, because a wall made of carpets is a stack of thin plates with air between them. Anything the installed
+ * map knows also works (the page checks the name against it); these are the ones that read as architecture at a glance.
+ */
 export const MATERIALS = [
   "mcl_core:stonebrick",
   "mcl_core:stonebrickcarved",
+  "mcl_core:stonebrickcracked",
+  "mcl_core:stonebrickmossy",
   "mcl_core:cobble",
   "mcl_core:mossycobble",
   "mcl_core:stone",
+  "mcl_core:brick_block",
   "mcl_core:wood",
+  "mcl_core:acaciawood",
+  "mcl_core:junglewood",
   "mcl_core:tree",
   "mcl_core:leaves",
   "mcl_core:glass",
-  "mcl_core:brick_block",
-  "mcl_core:sandstone",
-  "mcl_core:dirt_with_grass",
-  "mcl_wool:white_carpet",
-  "mcl_wool:red_carpet",
-  "mcl_stairs:stair_wood",
-  "mcl_stairs:slab_wood",
-  "mcl_stairs:slab_cobble",
-  "mcl_walls:stonebrick_9",
-  "mcl_walls:stonebrick_12",
-  "mcl_torches:torch",
+  "mcl_colorblocks:hardened_clay",
+  "mcl_core:clay",
+  "mcl_core:sand",
+  "mcl_core:snowblock",
+  "mcl_core:obsidian",
+  "mcl_core:dirt",
 ];
 
 const FALLBACK_MATERIAL = "mcl_core:stonebrick";
@@ -57,7 +61,10 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
  * page had to make on its own (unknown material, part outside the limit, too many blocks), so the run can say it out
  * loud instead of quietly drawing something else.
  */
-export function compileParts(parts) {
+export function compileParts(parts, opts = {}) {
+  // `known` is the installed map's block list. Without it a name is only checked for shape, and the kit draws whatever
+  // it likes for a block it does not have — which is how a rocket ends up as stone. With it, a wrong name is a note.
+  const known = opts && opts.known instanceof Set ? opts.known : null;
   const nodes = new Map(); // "x,y,z" -> [x,y,z,name,param2]; later parts overwrite earlier ones, like placing blocks
   const notes = [];
   const put = (x, y, z, name, param2 = 0) => {
@@ -71,8 +78,9 @@ export function compileParts(parts) {
   const mat = (p, at) => {
     const m = typeof p.material === "string" ? p.material.trim() : "";
     if (!m) return FALLBACK_MATERIAL;
-    if (!MATERIALS.includes(m) && !/^[a-z0-9_]+:[a-z0-9_]+$/.test(m)) {
-      notes.push(`${at}: material "${m}" is not a block name; drew ${FALLBACK_MATERIAL}`);
+    const shaped = /^[a-z0-9_]+:[a-z0-9_]+$/.test(m);
+    if (!shaped || (known && !known.has(m))) {
+      notes.push(`${at}: material "${m}" is not a block this pack has; drew ${FALLBACK_MATERIAL}`);
       return FALLBACK_MATERIAL;
     }
     return m;
@@ -129,34 +137,28 @@ export function compileParts(parts) {
       }
       case "roof": {
         // Gable: two slopes meeting at a ridge along x. Hip: steps in from both axes. Flat: one slab.
+        // A roof is described by its footprint [w, d], not by a box, so read its own two numbers.
+        const rw = Math.max(1, int(Array.isArray(part.size) ? part.size[0] : undefined, 1));
+        const rd = Math.max(1, int(Array.isArray(part.size) && part.size.length > 1 ? part.size[1] : undefined, rw));
         const style = part.style === "hip" || part.style === "flat" ? part.style : "gable";
-        const rise = clamp(int(part.rise, Math.max(2, Math.ceil(Math.min(w, d) / 2))), 1, 16);
+        const rise = clamp(int(part.rise, Math.max(2, Math.ceil(Math.min(rw, rd) / 2))), 1, 16);
         if (style === "flat") {
-          for (let x = -1; x <= w; x++) for (let z = -1; z <= d; z++) put(ox + x, oy, oz + z, m);
+          for (let x = -1; x <= rw; x++) for (let z = -1; z <= rd; z++) put(ox + x, oy, oz + z, m);
           break;
         }
+        // Each layer is solid, not an outline: a roof drawn as rings is a wireframe with sky in it.
         if (style === "hip") {
           for (let k = 0; k < rise; k++) {
-            const x0 = k, x1 = w - 1 - k, z0 = k, z1 = d - 1 - k;
+            const x0 = k, x1 = rw - 1 - k, z0 = k, z1 = rd - 1 - k;
             if (x0 > x1 || z0 > z1) break;
-            for (let x = x0; x <= x1; x++) {
-              put(ox + x, oy + k, oz + z0, m);
-              put(ox + x, oy + k, oz + z1, m);
-            }
-            for (let z = z0; z <= z1; z++) {
-              put(ox + x0, oy + k, oz + z, m);
-              put(ox + x1, oy + k, oz + z, m);
-            }
+            for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) put(ox + x, oy + k, oz + z, m);
           }
           break;
         }
         for (let k = 0; k < rise; k++) {
-          const z0 = k, z1 = d - 1 - k;
+          const z0 = k, z1 = rd - 1 - k;
           if (z0 > z1) break;
-          for (let x = 0; x < w; x++) {
-            put(ox + x, oy + k, oz + z0, m);
-            if (z1 !== z0) put(ox + x, oy + k, oz + z1, m);
-          }
+          for (let x = 0; x < rw; x++) for (let z = z0; z <= z1; z++) put(ox + x, oy + k, oz + z, m);
         }
         break;
       }

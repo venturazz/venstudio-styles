@@ -33,8 +33,18 @@ test("the same parts compile to the same blocks, in the same order, every time",
 
 test("a material the map does not know is swapped and said out loud, not hidden", () => {
   const built = compileParts([{ kind: "box", at: [0, 0, 0], size: [2, 2, 2], material: "stone" }]);
-  assert.ok(built.notes.some((n) => /material "stone" is not a block name/.test(n)), built.notes.join(" | "));
+  assert.ok(built.notes.some((n) => /material "stone" is not a block this pack has/.test(n)), built.notes.join(" | "));
   assert.ok(built.nodes.every((n) => n[3] === "mcl_core:stonebrick"));
+});
+
+test("the installed map decides what a material means", () => {
+  const known = new Set(["mcl_core:stonebrick", "mcl_wool:white_carpet"]);
+  const ok = compileParts([{ kind: "box", at: [0, 0, 0], size: [2, 2, 2], material: "mcl_wool:white_carpet" }], { known });
+  assert.deepEqual(ok.notes, [], "a block the map has is drawn as asked");
+  assert.ok(ok.nodes.every((n) => n[3] === "mcl_wool:white_carpet"));
+  const wrong = compileParts([{ kind: "box", at: [0, 0, 0], size: [2, 2, 2], material: "mcl_core:iron" }], { known });
+  assert.ok(wrong.notes.some((n) => /"mcl_core:iron" is not a block this pack has/.test(n)), wrong.notes.join(" | "));
+  assert.ok(wrong.nodes.every((n) => n[3] === "mcl_core:stonebrick"), "swapped, not dropped");
 });
 
 test("an unknown kind is refused by name, and the list is the primitives", () => {

@@ -52,6 +52,8 @@ let captions = [];
 // What the page had to decide alone this run (unknown material, part outside the limit, fallback to the rotation). The
 // worker's job result carries it, so a run that drifted says so instead of looking fine.
 let worldNotes = [];
+/** The pack's own block names, read from the map the kit draws with (null until the first composed shot asks). */
+let knownBlocks = null;
 let totalFrames = 0;
 let renderer = null;
 let degraded = false;
@@ -144,7 +146,16 @@ async function buildScene(THREE_, rig, struct, parts, cam, action, focus) {
   // the same builder, so the sweep, the materials and the lighting are the look's, not the writer's.
   let body;
   if (Array.isArray(parts) && parts.length > 0) {
-    const built = compileParts(parts);
+    // The installed map decides what a material name means; read it once so a wrong name is a note, not a quiet swap.
+    if (knownBlocks === null) {
+      try {
+        const map = await (await fetch("assets/vendor/blockmap.json")).json();
+        knownBlocks = new Set(Object.keys(map));
+      } catch {
+        knownBlocks = new Set();
+      }
+    }
+    const built = compileParts(parts, { known: knownBlocks });
     for (const n of built.notes) worldNotes.push(`shot: ${n}`);
     const url = URL.createObjectURL(new Blob([JSON.stringify({ size: built.size, nodes: built.nodes })], { type: "application/json" }));
     body = await vox.build(url, { origin: [0, 0, 0], name: "parts" });
