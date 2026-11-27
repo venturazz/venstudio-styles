@@ -286,6 +286,37 @@ function checkWorld(v, issues) {
   }
 }
 
+/**
+ * contract.library: structures this pack has composed before, by name, each a list of parts (the same shape a scene
+ * sends in intent.parts). Data, not code — a name is sugar the portal expands back into parts before the payload is
+ * frozen, so a render never depends on the worker knowing the name.
+ */
+function checkLibrary(v, issues) {
+  if (!isRecord(v)) {
+    issues.push("contract.library must be an object of name -> parts");
+    return;
+  }
+  const names = Object.keys(v);
+  if (names.length === 0 || names.length > 12) issues.push(`contract.library must declare 1..12 names, not ${names.length}`);
+  for (const name of names) {
+    if (!STORY_VALUE.test(name)) {
+      issues.push(`contract.library: ${JSON.stringify(name)} is not a name (lowercase letters, digits, dash or underscore)`);
+      continue;
+    }
+    const parts = v[name];
+    if (!Array.isArray(parts) || parts.length === 0 || parts.length > 64) {
+      issues.push(`contract.library.${name} must be a list of 1..64 parts`);
+      continue;
+    }
+    parts.forEach((part, i) => {
+      if (!isRecord(part)) issues.push(`contract.library.${name}[${i}] must be an object`);
+      else if (!WORLD_PRIMITIVES.includes(part.kind)) {
+        issues.push(`contract.library.${name}[${i}].kind is ${JSON.stringify(part.kind)}, not one of ${WORLD_PRIMITIVES.join(", ")}`);
+      }
+    });
+  }
+}
+
 function checkList(v, allowed, at, issues, { min = 1 } = {}) {
   if (!Array.isArray(v) || v.length < min || v.length > LIMITS.list) {
     issues.push(`${at} must be a list of ${min}..${LIMITS.list} entries`);
@@ -374,11 +405,14 @@ export function validateStyle(style, { dirName, files } = {}) {
   const c = style.contract;
   if (!isRecord(c)) issues.push("contract must be an object");
   else {
-    checkKeys(c, ["pacing", "onScreen", "captions", "audio", "assets", "story", "world"], "contract", issues);
+    checkKeys(c, ["pacing", "onScreen", "captions", "audio", "assets", "story", "world", "library"], "contract", issues);
     if (c.story !== undefined) checkStory(c.story, issues);
     if (c.world !== undefined) checkWorld(c.world, issues);
+    if (c.library !== undefined) checkLibrary(c.library, issues);
     // Composing needs words to build: a page that takes parts but no story has nothing to build from.
     if (c.world !== undefined && c.story === undefined) issues.push("contract.world needs contract.story: parts build what the scenes say");
+    // A named structure is a shortcut to parts, so the look must also be able to compose them.
+    if (c.library !== undefined && c.world === undefined) issues.push("contract.library needs contract.world: a name expands to parts");
     const p = c.pacing;
     if (!isRecord(p)) issues.push("contract.pacing must be an object");
     else {

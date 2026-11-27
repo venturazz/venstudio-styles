@@ -3,7 +3,7 @@
   "id": "voxel-build",
   "name": "Minecraft Village (Muse)",
   "description": "A village builds itself block by block on a Muse worker: voxel structures from the kit, a cutting plane sweeping up, three camera moves, a pixel pay-off word and a caption. The Muse version; the cottage is another style.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "status": "trial",
   "family": "game-style",
   "formats": {
@@ -102,7 +102,102 @@
       "path",
       "tree",
       "blocks"
-    ]
+    ],
+    "library": {
+      "gate": [
+        {
+          "kind": "walls",
+          "at": [
+            1,
+            0,
+            0
+          ],
+          "size": [
+            11,
+            7,
+            3
+          ],
+          "material": "mcl_core:stonebrick",
+          "openings": [
+            {
+              "at": [
+                4,
+                0
+              ],
+              "w": 2,
+              "h": 4
+            }
+          ]
+        },
+        {
+          "kind": "roof",
+          "at": [
+            0,
+            7,
+            0
+          ],
+          "size": [
+            13,
+            3
+          ],
+          "style": "gable",
+          "rise": 3,
+          "material": "mcl_core:wood"
+        },
+        {
+          "kind": "cylinder",
+          "at": [
+            0,
+            0,
+            0
+          ],
+          "radius": 2,
+          "height": 12,
+          "material": "mcl_core:cobble"
+        },
+        {
+          "kind": "cylinder",
+          "at": [
+            12,
+            0,
+            0
+          ],
+          "radius": 2,
+          "height": 12,
+          "material": "mcl_core:cobble"
+        },
+        {
+          "kind": "roof",
+          "at": [
+            0,
+            12,
+            0
+          ],
+          "size": [
+            5,
+            5
+          ],
+          "style": "hip",
+          "rise": 3,
+          "material": "mcl_core:wood"
+        },
+        {
+          "kind": "roof",
+          "at": [
+            12,
+            12,
+            0
+          ],
+          "size": [
+            5,
+            5
+          ],
+          "style": "hip",
+          "rise": 3,
+          "material": "mcl_core:wood"
+        }
+      ]
+    }
   },
   "portal": {
     "beatShape": "single",
