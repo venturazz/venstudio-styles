@@ -1145,7 +1145,7 @@ export interface RenderSpec {
   transitionSec: number;
   /** What an animating engine draws. Null for the stills engine. */
   scenePlan: RenderScenePlan | null;
-  shots: Array<{ shotRef: string; assetId: string; seconds: number; motion: RenderMotion; intent?: Record<string, string> }>;
+  shots: Array<{ shotRef: string; assetId: string; seconds: number; motion: RenderMotion; intent?: Record<string, unknown> }>;
   narrationAssetId: string;
   /** Length of the narration as it plays, after narrationTempo. */
   narrationSec: number;
@@ -4857,7 +4857,7 @@ export interface HtmlCaptureProps {
    * One per shot, same order; `image` is a URL relative to the page (../in/<file>) or null. `intent` is the pack's own
    * story vocabulary filled in (contract.story), passed through untouched: the page decides what its words mean.
    */
-  shots: Array<{ shotRef: string; seconds: number; image: string | null; intent?: Record<string, string> }>;
+  shots: Array<{ shotRef: string; seconds: number; image: string | null; intent?: Record<string, unknown> }>;
   timeline: XfadeTimeline;
   scenes: RenderScene[];
   /** Captions to draw. Empty unless the pack declares drawsCaptions: otherwise ffmpeg burns them. */
@@ -5383,6 +5383,11 @@ export interface HtmlCaptureResult {
   consoleErrors: string[];
   /** True when Chromium ran with its own process sandbox (page mode, where the machine supports it). */
   sandboxed: boolean;
+  /**
+   * What the page decided for itself during init (a named structure missing from the kit, a material swapped, a shot
+   * built from parts). Stored with the job so a run can say how it drew the story without anyone opening the video.
+   */
+  pageNotes?: string[];
   /** Stills only: how many were asked for, and how far the page was drawn before the budget stopped it (absent if all). */
   planned?: number;
   drawn?: number;
@@ -5597,6 +5602,8 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<HtmlCaptureRes
     };
     await domCheck();
     const meta = (await evaluate(`window.__venstudio.init(${JSON.stringify(o.props)})`, limits.initTimeoutMs, "init(props)")) as Record<string, unknown> | null;
+    // The page's own account of the run (see worldNotes in an html-capture page): words it had to choose on its own.
+    const pageNotes = Array.isArray(meta?.world) ? (meta.world as unknown[]).filter((n): n is string => typeof n === "string").slice(0, 24) : [];
     checkViolations();
     await domCheck();
     const issue = htmlInitIssue(meta, { width: o.width, height: o.height, fps: o.fps, totalFrames: o.totalFrames });
@@ -5647,6 +5654,7 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<HtmlCaptureRes
         violations,
         consoleErrors,
         sandboxed: sandbox,
+        ...(pageNotes.length > 0 ? { pageNotes } : {}),
       };
     }
 
@@ -5693,7 +5701,7 @@ export async function captureHtml(o: HtmlCaptureOptions): Promise<HtmlCaptureRes
     await ffDone;
     await domCheck();
     o.onProgress?.(1);
-    return { frames: o.totalFrames, violations, consoleErrors, sandboxed: sandbox };
+    return { frames: o.totalFrames, violations, consoleErrors, sandboxed: sandbox, ...(pageNotes.length > 0 ? { pageNotes } : {}) };
   } catch (err) {
     ffmpeg?.kill("SIGKILL");
     if (o.signal.aborted) throw new Error("Aborted");
